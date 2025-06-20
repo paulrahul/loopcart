@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoopCart</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        .card-enter {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .item-move {
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
+    <div id="app" class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+            <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+                <h1 class="text-2xl font-bold text-gray-800 dark:text-white">LoopCart</h1>
+                <button id="theme-toggle" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                    <svg class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-6xl mx-auto px-4 py-6">
+            <!-- Home Screen -->
+            <div id="home-screen" class="block">
+                <!-- Cards Grid -->
+                <div id="cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
+                    <!-- Cards will be rendered here -->
+                </div>
+
+                <!-- Add Button -->
+                <div class="mb-8">
+                    <button id="add-card-btn" class="w-full max-w-md mx-auto block bg-white dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 hover:border-blue-400 dark:hover:border-blue-500 transition-colors group">
+                        <div class="text-center">
+                            <svg class="w-12 h-12 mx-auto text-gray-400 group-hover:text-blue-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                            </svg>
+                            <p class="text-gray-600 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium">Create new shopping list</p>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Card Editor -->
+            <div id="card-editor" class="hidden">
+                <div class="max-w-2xl mx-auto">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
+                        <!-- Card Header -->
+                        <div class="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
+                            <input id="card-title" type="text" placeholder="List title..." class="flex-1 text-xl font-semibold bg-transparent border-none outline-none text-gray-800 dark:text-white placeholder-gray-500 dark:placeholder-gray-400">
+                            <button id="close-card-btn" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                                <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Items List -->
+                        <div class="p-4">
+                            <div id="items-list" class="space-y-2 mb-4">
+                                <!-- Items will be rendered here -->
+                            </div>
+
+                            <!-- Add Item Input -->
+                            <div class="flex items-center space-x-2">
+                                <input id="new-item-input" type="text" placeholder="Add item..." class="flex-1 p-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-white placeholder-gray-500 dark:placeholder-gray-400">
+                                <button id="add-item-btn" class="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        class LoopCart {
+            constructor() {
+                this.cards = [];
+                this.currentCard = null;
+                this.currentCardId = null;
+                this.isDark = localStorage.getItem('theme') === 'dark';
+                this.init();
+            }
+
+            init() {
+                this.setupTheme();
+                this.loadCards();
+                this.bindEvents();
+                this.renderHome();
+            }
+
+            setupTheme() {
+                if (this.isDark) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }
+
+            loadCards() {
+                const stored = localStorage.getItem('loopcart-cards');
+                this.cards = stored ? JSON.parse(stored) : [];
+            }
+
+            saveCards() {
+                localStorage.setItem('loopcart-cards', JSON.stringify(this.cards));
+            }
+
+            bindEvents() {
+                // Theme toggle
+                document.getElementById('theme-toggle').addEventListener('click', () => {
+                    this.isDark = !this.isDark;
+                    localStorage.setItem('theme', this.isDark ? 'dark' : 'light');
+                    this.setupTheme();
+                });
+
+                // Add card button
+                document.getElementById('add-card-btn').addEventListener('click', () => {
+                    this.createNewCard();
+                });
+
+                // Close card button
+                document.getElementById('close-card-btn').addEventListener('click', () => {
+                    this.closeCard();
+                });
+
+                // Add item button
+                document.getElementById('add-item-btn').addEventListener('click', () => {
+                    this.addItem();
+                });
+
+                // New item input
+                document.getElementById('new-item-input').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.addItem();
+                    }
+                });
+
+                // New item input - tab out to add item
+                document.getElementById('new-item-input').addEventListener('blur', (e) => {
+                    if (e.target.value.trim()) {
+                        this.addItem();
+                    }
+                });
+
+                // Card title input
+                document.getElementById('card-title').addEventListener('input', (e) => {
+                    if (this.currentCard) {
+                        this.currentCard.card = e.target.value;
+                    }
+                });
+            }
+
+            createNewCard() {
+                const newCard = {
+                    id: Date.now().toString(),
+                    card: '',
+                    items: []
+                };
+                
+                this.currentCard = newCard;
+                this.currentCardId = newCard.id;
+                this.showCardEditor();
+            }
+
+            editCard(cardId) {
+                const card = this.cards.find(c => c.id === cardId);
+                if (card) {
+                    this.currentCard = { ...card, items: [...card.items] };
+                    this.currentCardId = cardId;
+                    this.showCardEditor();
+                }
+            }
+
+            showCardEditor() {
+                document.getElementById('home-screen').classList.add('hidden');
+                document.getElementById('card-editor').classList.remove('hidden');
+                
+                // Set card title
+                document.getElementById('card-title').value = this.currentCard.card;
+                
+                // Render items
+                this.renderItems();
+                
+                // Focus on title if empty, otherwise focus on add item input
+                if (!this.currentCard.card) {
+                    document.getElementById('card-title').focus();
+                } else {
+                    document.getElementById('new-item-input').focus();
+                }
+            }
+
+            closeCard() {
+                if (this.currentCard) {
+                    // Save or update card
+                    const existingIndex = this.cards.findIndex(c => c.id === this.currentCardId);
+                    
+                    if (existingIndex >= 0) {
+                        this.cards[existingIndex] = this.currentCard;
+                    } else {
+                        this.cards.push(this.currentCard);
+                    }
+                    
+                    this.saveCards();
+                }
+                
+                this.currentCard = null;
+                this.currentCardId = null;
+                
+                document.getElementById('card-editor').classList.add('hidden');
+                document.getElementById('home-screen').classList.remove('hidden');
+                
+                this.renderHome();
+            }
+
+            addItem() {
+                const input = document.getElementById('new-item-input');
+                const text = input.value.trim();
+                
+                if (text) {
+                    // Split by spaces and create items for each word
+                    const words = text.split(/\s+/).filter(word => word.length > 0);
+                    
+                    words.forEach(word => {
+                        // Check if item already exists
+                        const existingItem = this.currentCard.items.find(item => 
+                            item.name.toLowerCase() === word.toLowerCase()
+                        );
+                        
+                        if (existingItem) {
+                            // If unchecked, treat as re-adding
+                            if (!existingItem.checked) {
+                                existingItem.last_added_time = Date.now();
+                            }
+                        } else {
+                            // Add new item
+                            this.currentCard.items.push({
+                                name: word,
+                                checked: false,
+                                checked_count: 0,
+                                last_checked_time: null,
+                                last_added_time: Date.now()
+                            });
+                        }
+                    });
+                    
+                    input.value = '';
+                    this.renderItems();
+                }
+            }
+
+            toggleItem(index) {
+                const item = this.currentCard.items[index];
+                item.checked = !item.checked;
+                
+                if (item.checked) {
+                    item.checked_count++;
+                    item.last_checked_time = Date.now();
+                } else {
+                    // Unchecking = re-adding
+                    item.last_added_time = Date.now();
+                }
+                
+                this.renderItems();
+            }
+
+            deleteItem(index) {
+                this.currentCard.items.splice(index, 1);
+                this.renderItems();
+            }
+
+            editItem(index, newName) {
+                if (newName.trim()) {
+                    this.currentCard.items[index].name = newName.trim();
+                    this.renderItems();
+                }
+            }
+
+            getSortedItems() {
+                const unchecked = this.currentCard.items.filter(item => !item.checked);
+                const checked = this.currentCard.items.filter(item => item.checked);
+                
+                // Sort unchecked items
+                unchecked.sort((a, b) => {
+                    // Most recently added first
+                    return b.last_added_time - a.last_added_time;
+                });
+                
+                // Sort checked items
+                checked.sort((a, b) => {
+                    // Most frequently checked first (primary)
+                    if (a.checked_count !== b.checked_count) {
+                        return b.checked_count - a.checked_count;
+                    }
+                    // Least recently checked first (secondary)
+                    return a.last_checked_time - b.last_checked_time;
+                });
+                
+                return [...unchecked, ...checked];
+            }
+
+            renderItems() {
+                const container = document.getElementById('items-list');
+                const sortedItems = this.getSortedItems();
+                
+                container.innerHTML = '';
+                
+                sortedItems.forEach((item, index) => {
+                    const originalIndex = this.currentCard.items.indexOf(item);
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = `flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg item-move ${item.checked ? 'opacity-60' : ''}`;
+                    
+                    itemDiv.innerHTML = `
+                        <input type="checkbox" ${item.checked ? 'checked' : ''} 
+                               class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                               onchange="app.toggleItem(${originalIndex})">
+                        <input type="text" value="${item.name}" 
+                               class="flex-1 bg-transparent border-none outline-none text-gray-800 dark:text-white ${item.checked ? 'line-through' : ''}"
+                               onblur="app.editItem(${originalIndex}, this.value)"
+                               onkeypress="if(event.key==='Enter') this.blur()">
+                        <button onclick="app.deleteItem(${originalIndex})" 
+                                class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors">
+                            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    `;
+                    
+                    container.appendChild(itemDiv);
+                });
+            }
+
+            renderHome() {
+                const container = document.getElementById('cards-container');
+                container.innerHTML = '';
+                
+                this.cards.forEach(card => {
+                    const cardDiv = document.createElement('div');
+                    cardDiv.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-4 hover:shadow-lg transition-shadow cursor-pointer card-enter';
+                    
+                    const title = card.card || 'Untitled List';
+                    const itemCount = card.items.length;
+                    const checkedCount = card.items.filter(item => item.checked).length;
+                    
+                    cardDiv.innerHTML = `
+                        <h3 class="font-semibold text-gray-800 dark:text-white mb-2 truncate">${title}</h3>
+                        <p class="text-gray-600 dark:text-gray-300 text-sm mb-3">${itemCount} items, ${checkedCount} completed</p>
+                        <div class="space-y-1">
+                            ${card.items.slice(0, 3).map(item => `
+                                <div class="flex items-center space-x-2 text-sm">
+                                    <div class="w-3 h-3 border border-gray-300 rounded ${item.checked ? 'bg-green-500 border-green-500' : ''}"></div>
+                                    <span class="text-gray-700 dark:text-gray-300 truncate ${item.checked ? 'line-through opacity-60' : ''}">${item.name}</span>
+                                </div>
+                            `).join('')}
+                            ${card.items.length > 3 ? `<p class="text-xs text-gray-500 dark:text-gray-400">+${card.items.length - 3} more items</p>` : ''}
+                        </div>
+                    `;
+                    
+                    cardDiv.addEventListener('click', () => {
+                        this.editCard(card.id);
+                    });
+                    
+                    container.appendChild(cardDiv);
+                });
+            }
+
+            deleteCard(cardId) {
+                this.cards = this.cards.filter(c => c.id !== cardId);
+                this.saveCards();
+                this.renderHome();
+            }
+        }
+
+        // Initialize app
+        const app = new LoopCart();
+    </script>
+</body>
+</html>
