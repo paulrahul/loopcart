@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LoopCart</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://apis.google.com/js/api.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -88,6 +89,12 @@
                     <svg class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
                     </svg>
+                </button>
+                <button id="sync-gdrive-btn" class="ml-4 p-2 rounded-lg bg-green-100 dark:bg-green-700 hover:bg-green-200 dark:hover:bg-green-600 transition-colors flex items-center" title="Sync to Google Drive">
+                    <svg class="w-5 h-5 text-green-600 dark:text-green-300 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 17.25V21h3.75M21 17.25V21h-3.75M12 3v18m9-9H3" />
+                    </svg>
+                    <span class="text-green-700 dark:text-green-200 font-medium">Sync to Google Drive</span>
                 </button>
             </div>
         </header>
@@ -651,6 +658,76 @@
 
         // Initialize app
         const app = new LoopCart();
+
+        // --- Google API Config ---
+        const GOOGLE_CLIENT_ID = '241832316729-il4a6ntr95kduo99tqjmjaknreabton8.apps.googleusercontent.com'; // TODO: Replace with your actual client ID
+        const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
+        let googleAuthInstance = null;
+        let googleUser = null;
+
+        // Load and initialize Google API client
+        function initGoogleAPI() {
+            gapi.load('client:auth2', async () => {
+                await gapi.client.init({
+                    clientId: GOOGLE_CLIENT_ID,
+                    scope: GOOGLE_SCOPES
+                });
+                googleAuthInstance = gapi.auth2.getAuthInstance();
+                updateSyncButton();
+            });
+        }
+
+        // Update Sync button text based on sign-in state
+        function updateSyncButton() {
+            const btn = document.getElementById('sync-gdrive-btn');
+            if (!btn) return;
+            if (googleAuthInstance && googleAuthInstance.isSignedIn.get()) {
+                btn.querySelector('span').textContent = 'Synced to Google Drive';
+                btn.classList.add('bg-green-300', 'dark:bg-green-800');
+                btn.classList.remove('bg-green-100', 'dark:bg-green-700');
+            } else {
+                btn.querySelector('span').textContent = 'Sync to Google Drive';
+                btn.classList.remove('bg-green-300', 'dark:bg-green-800');
+                btn.classList.add('bg-green-100', 'dark:bg-green-700');
+            }
+        }
+
+        // Handle sign-in
+        async function handleGoogleSignIn() {
+            if (!googleAuthInstance) {
+                alert('Google API not initialized yet.');
+                return;
+            }
+            try {
+                await googleAuthInstance.signIn();
+                googleUser = googleAuthInstance.currentUser.get();
+                updateSyncButton();
+                // You can now call sync logic here
+                alert('Signed in to Google Drive!');
+            } catch (err) {
+                alert('Google sign-in failed.');
+            }
+        }
+
+        // Bind Sync button event after DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const syncBtn = document.getElementById('sync-gdrive-btn');
+            if (syncBtn) {
+                syncBtn.addEventListener('click', handleGoogleSignIn);
+            }
+            // Initialize Google API
+            if (window.gapi) {
+                initGoogleAPI();
+            } else {
+                // Wait for gapi to load if not ready
+                const gapiInterval = setInterval(() => {
+                    if (window.gapi) {
+                        clearInterval(gapiInterval);
+                        initGoogleAPI();
+                    }
+                }, 100);
+            }
+        });
     </script>
 </body>
 </html>
