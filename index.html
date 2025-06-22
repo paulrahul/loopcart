@@ -80,6 +80,32 @@
         .autocomplete-item:last-child {
             border-bottom: none;
         }
+        .sync-btn-connected {
+            background-color: #4ade80; /* Tailwind green-400 */
+            color: #fff;
+        }
+        .sync-btn-connected:hover {
+            background-color: #16a34a; /* Tailwind green-600 */
+        }
+        .dark .sync-btn-connected {
+            background-color: #166534; /* Tailwind green-800 */
+        }
+        .dark .sync-btn-connected:hover {
+            background-color: #4ade80; /* Tailwind green-400 */
+        }
+        .sync-btn-disconnected {
+            background-color: #fb923c; /* Tailwind orange-400 */
+            color: #fff;
+        }
+        .sync-btn-disconnected:hover {
+            background-color: #ea580c; /* Tailwind orange-600 */
+        }
+        .dark .sync-btn-disconnected {
+            background-color: #ea580c; /* Tailwind orange-600 */
+        }
+        .dark .sync-btn-disconnected:hover {
+            background-color: #fb923c; /* Tailwind orange-400 */
+        }
     </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
@@ -93,13 +119,13 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
                     </svg>
                 </button>                
-                <button id="sync-gdrive-btn" class="ml-4 p-2 rounded-lg bg-orange-300 dark:bg-orange-600 hover:bg-orange-600 dark:hover:bg-orange-300 transition-colors flex items-center" title="Sync to Google Drive">
-                    <span class="material-symbols-outlined text-gray-100 dark:bg-orange-600 dark:hover:bg-orange-300 mr-1">
+                <button id="sync-gdrive-btn" class="ml-4 p-2 hidden rounded-lg transition-colors flex items-center sync-btn-disconnected" title="Sync to Google Drive">
+                    <span class="material-symbols-outlined mr-1 text-white">
                         add_to_drive
                     </span>
-                    <span class="text-gray-100 dark:bg-orange-600 dark:hover:bg-orange-300 font-medium">Sync to Google Drive</span>
+                    <span class="font-medium text-white">Sync to Google Drive</span>
                 </button>
-                <button id="logout-btn" class="p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center" title="Logout">
+                <button id="logout-btn" class="hidden p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center" title="Logout">
                     <span class="material-symbols-outlined mr-1">
                         logout
                     </span>
@@ -807,28 +833,25 @@
             const btn = document.getElementById('sync-gdrive-btn');
             if (!btn) return;
 
+            btn.classList.remove("hidden");
+
             const labelSpan = btn.querySelectorAll('span')[1]; // Second span holds the text
             const iconSpan = btn.querySelector('span.material-symbols-outlined');
+
             if (googleAuthInstance && googleAuthInstance.isSignedIn.get()) {
                 labelSpan.textContent = 'Connected';
-                btn.classList.add('bg-green-300', 'dark:bg-green-800', 'hover:bg-green-600', 'dark:hover:bg-green-300', 'text-white');
-                btn.classList.remove('bg-orange-300', 'dark:bg-orange-600', 'hover:bg-orange-600', 'dark:hover:bg-orange-300');
-                // Show logout button.
+                btn.classList.add('sync-btn-connected');
+                btn.classList.remove('sync-btn-disconnected');
                 document.getElementById('logout-btn').classList.remove("hidden");
             } else {
                 labelSpan.textContent = 'Sync to Google Drive';
-                btn.classList.remove('bg-green-300', 'dark:bg-green-800', 'hover:bg-green-600', 'dark:hover:bg-green-300', 'text-white');
-                btn.classList.add('bg-orange-300', 'dark:bg-orange-600', 'hover:bg-orange-600', 'dark:hover:bg-orange-300', 'text-white');
-                // Hide logout button.
+                btn.classList.add('sync-btn-disconnected');
+                btn.classList.remove('sync-btn-connected');
                 document.getElementById('logout-btn').classList.add("hidden");
             }
-            // Ensure icon and label are always white
-            if (iconSpan) {
-                iconSpan.classList.add('text-white');
-                iconSpan.classList.remove('bg-orange-600', 'bg-orange-300', 'dark:bg-orange-600', 'dark:hover:bg-orange-300', 'text-gray-100', 'text-green-600', 'dark:text-green-300');
-            }
+            // Always ensure icon and label are white
+            if (iconSpan) iconSpan.classList.add('text-white');
             labelSpan.classList.add('text-white');
-            labelSpan.classList.remove('bg-orange-600', 'bg-orange-300', 'dark:bg-orange-600', 'dark:hover:bg-orange-300', 'text-gray-100', 'text-green-600', 'dark:text-green-300');
         }
 
         // Bind Sync button event after DOM is loaded
