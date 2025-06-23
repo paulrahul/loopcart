@@ -228,12 +228,9 @@
                                 </button>
                                 <input type="text" id="items-search-input" class="search-input" placeholder="Search items..." autocomplete="off">
                             </div>
-                            <div id="items-list" class="space-y-2 mb-4">
-                                <!-- Items will be rendered here -->
-                            </div>
 
                             <!-- Add Item Input -->
-                            <div class="autocomplete-container">
+                            <div class="autocomplete-container mb-2">
                                 <div class="flex items-center space-x-2">
                                     <input id="new-item-input" type="text" placeholder="Add item..." class="flex-1 p-3 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 dark:text-white placeholder-gray-500 dark:placeholder-gray-400" autocomplete="off">
                                     <button id="add-item-btn" class="p-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
@@ -246,6 +243,12 @@
                                     <!-- Autocomplete suggestions will appear here -->
                                 </div>
                             </div>
+
+                            <div id="items-list" class="space-y-2 mb-4">
+                                <!-- Items will be rendered here -->
+                            </div>
+
+
                         </div>
                     </div>
                 </div>
@@ -556,15 +559,11 @@
                     }
                     
                     this.saveCards();
+                    document.getElementById('card-editor').classList.add('hidden');
+                    document.getElementById('home-screen').classList.remove('hidden');
+
+                    this.renderHome();
                 }
-                
-                this.currentCard = null;
-                this.currentCardId = null;
-                
-                document.getElementById('card-editor').classList.add('hidden');
-                document.getElementById('home-screen').classList.remove('hidden');
-                
-                this.renderHome();
             }
 
             addItem() {
@@ -911,7 +910,7 @@
                     valueInputOption: 'RAW',
                     resource: { values: [[jsonData]] }
                 });
-                showSyncStatus('All cards synced to Google Drive!', true);
+                showSyncStatus('Synced to Google Drive!', true);
             } catch (err) {
                 console.error('Stack trace:', err.stack); // Logs the full stack trace
                 showSyncStatus('Sync failed: ' + (err.result?.error?.message || err.message), false);
@@ -938,8 +937,11 @@
         LoopCart.prototype.closeCard = function() {
             originalCloseCard.apply(this, arguments);
             // Sync all cards after closing card (if signed in)
-            if (googleAuthInstance && googleAuthInstance.isSignedIn.get() && this.cards.length > 0) {
+            if (googleAuthInstance && googleAuthInstance.isSignedIn.get() && this.cards.length > 0 && this.currentCard) {
                 syncAllCardsToSheet(this.cards);
+
+                this.currentCard = null;
+                this.currentCardId = null;
             }
         };
 
