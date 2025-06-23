@@ -252,58 +252,99 @@
                 this.currentCard = null;
                 this.currentCardId = null;
                 this.isDark = localStorage.getItem('theme') === 'dark';
+
                 this.autocompleteItems = [
                     // Fruits
                     'apples', 'bananas', 'oranges', 'grapes', 'strawberries', 'blueberries', 'raspberries', 'blackberries',
                     'pineapple', 'mango', 'kiwi', 'peaches', 'pears', 'plums', 'cherries', 'watermelon', 'cantaloupe',
                     'honeydew', 'lemon', 'lime', 'grapefruit', 'avocado', 'coconut', 'papaya', 'pomegranate',
-                    
+                    'nectarines', 'apricots', 'figs', 'tangerines', 'plantains', 'dates',
+                
                     // Vegetables
                     'tomatoes', 'potatoes', 'onions', 'garlic', 'carrots', 'celery', 'broccoli', 'cauliflower',
                     'spinach', 'lettuce', 'cabbage', 'peppers', 'mushrooms', 'zucchini', 'cucumber', 'eggplant',
                     'asparagus', 'green beans', 'peas', 'corn', 'sweet potato', 'beets', 'radishes', 'kale',
-                    'brussels sprouts', 'artichoke', 'leeks', 'parsnips', 'turnips',
-                    
+                    'brussels sprouts', 'artichoke', 'leeks', 'parsnips', 'turnips', 'arugula', 'bok choy',
+                    'swiss chard', 'watercress', 'shallots', 'green onion', 'capsicum', 'matter', 'curry patta',
+                
                     // Proteins
                     'chicken', 'beef', 'pork', 'fish', 'salmon', 'tuna', 'shrimp', 'eggs', 'turkey', 'ham',
                     'bacon', 'sausage', 'ground beef', 'chicken breast', 'pork chops', 'steak', 'lamb',
                     'tofu', 'tempeh', 'beans', 'lentils', 'chickpeas', 'nuts', 'almonds', 'walnuts',
-                    
+                    'cashews', 'pecans', 'sunflower seeds', 'pumpkin seeds', 'protein bars',
+                    'vegan burger', 'vegan meatballs', 'veggie meatballs', 'chicken sausage', 'tofu cheese', 'quark', 'paneer',
+                
                     // Dairy
                     'milk', 'cheese', 'butter', 'yogurt', 'cream', 'sour cream', 'cottage cheese', 'mozzarella',
                     'cheddar', 'parmesan', 'feta', 'goat cheese', 'cream cheese', 'ice cream',
-                    
+                    'buttermilk', 'half and half', 'whipped cream',
+                
                     // Grains & Bread
                     'bread', 'rice', 'pasta', 'cereal', 'oats', 'quinoa', 'flour', 'bagels', 'tortillas',
                     'crackers', 'rolls', 'baguette', 'pita', 'noodles', 'couscous', 'barley',
-                    
+                    'english muffins', 'cornmeal', 'bread crumbs', 'pancake mix', 'bulgur wheat', 'basmati rice',
+                    'sandwich bread', 'roti', 'rawa', 'dosa batter', 'parathe', 'dal',
+                
                     // Pantry Staples
                     'salt', 'pepper', 'sugar', 'olive oil', 'vegetable oil', 'vinegar', 'baking soda', 'baking powder',
                     'vanilla', 'honey', 'maple syrup', 'ketchup', 'mustard', 'mayonnaise', 'soy sauce', 'hot sauce',
                     'barbecue sauce', 'ranch', 'italian dressing', 'salsa', 'peanut butter', 'jelly', 'jam',
-                    
+                    'yeast', 'cornstarch', 'cocoa powder', 'bouillon cubes', 'evaporated milk', 'condensed milk',
+                    'canned tomatoes', 'canned beans', 'canned tuna', 'canned soup',
+                    'mustard oil', 'garam masala', 'ginger garlic paste', 'lime juice', 'salad dressing',
+                    'oyster sauce', 'light soy sauce', 'sugarfree', 'ghee', 'elaich', 'maggi?', 'tamarind',
+                
                     // Beverages
                     'water', 'juice', 'soda', 'coffee', 'tea', 'beer', 'wine', 'sparkling water', 'energy drinks',
                     'sports drinks', 'coconut water', 'almond milk', 'oat milk', 'soy milk',
-                    
+                    'kombucha', 'protein shakes', 'lemonade', 'iced tea', 'saft', 'tea bags', 'water bottle', 'tea leaves',
+                
                     // Frozen Foods
                     'frozen vegetables', 'frozen fruit', 'frozen pizza', 'ice cream', 'frozen dinners', 'frozen chicken',
                     'frozen fish', 'frozen berries', 'frozen corn', 'frozen peas',
-                    
+                    'frozen waffles', 'frozen fries', 'frozen dumplings', 'frozen meatballs',
+                
                     // Snacks
                     'chips', 'pretzels', 'popcorn', 'cookies', 'crackers', 'granola bars', 'trail mix', 'chocolate',
                     'candy', 'gum', 'mints', 'dried fruit', 'jerky',
-                    
+                    'rice cakes', 'pudding cups', 'fruit snacks', 'nut butter packets', 'snacks for train',
+                    'biscuit', 'chocolate sticks', 'chips - pom bär',
+                
                     // Household Items
                     'toilet paper', 'paper towels', 'tissues', 'laundry detergent', 'dish soap', 'shampoo', 'conditioner',
                     'toothpaste', 'deodorant', 'soap', 'lotion', 'sunscreen', 'vitamins', 'medicine',
                     'trash bags', 'aluminum foil', 'plastic wrap', 'ziplock bags', 'cleaning supplies',
-                    
+                    'batteries', 'light bulbs', 'air freshener', 'disinfectant wipes', 'hand sanitizer',
+                    'sponges', 'laundry softener', 'toilet cleaner', 'bleach', 'mop refills',
+                    'kitchen tissues', 'garbage bags', 'garbage bags (paper)', 'tissue box', 'ecover dish washing liquid',
+                    'hand wash refill', 'proper toilet brush', 'toilet frische thing', 'multivitamins', 'dish washer salt',
+                    'washing tabs', 'drano', 'vim', 'covid masks', 'surgical masks', 'floor cleaner', 'room freshner',
+                    'bottle opener', 'kitchen cleaner', 'detergent', 'moisturising cream', 'facewash',
+                    'razor', 'shaving cream', 'toilet spray', 'test kits', 'dettol', 'softener',
+                    'sanitizer', 'washing bowl', 'oil brush', 'toilet brush', 'bathroom scent',
+                
                     // Spices & Herbs
                     'basil', 'oregano', 'thyme', 'rosemary', 'sage', 'parsley', 'cilantro', 'dill', 'mint',
                     'cinnamon', 'paprika', 'cumin', 'chili powder', 'garlic powder', 'onion powder', 'black pepper',
-                    'red pepper flakes', 'bay leaves', 'turmeric', 'ginger'
+                    'red pepper flakes', 'bay leaves', 'turmeric', 'ginger',
+                    'paprika powder', 'italian herb mix', 'coriander powder', 'jeera powder', 'kasuri methi',
+                    'ginger paste', 'jeera seeds', 'cardamom', 'chaat masa', 'black pepper whole',
+                
+                    // Miscellaneous / Non-food Essentials
+                    'mouthwash', 'listerine', 'toothbrush', 'mundspray', 'bandaids', 'coasters for glass', 'nail polish',
+                    'chapstick', 'tattoo cream', 'tea sieve thingie', 'small colour labeler', 'handwash',
+                    'gems clips', 'AA batteries', 'sticky tapes', 'pepper shaker', 'some cough powder',
+                    'ear muffs', 'envelope for olivier', 'laptop cleaner', 'notebook for german class',
+                    'marker pen', 'pen', 'pens', 'notebook', 'keyring', 'blue nailpolish', 'glue stick',
+                    'beard shampoo', 'extra beard comb', 'extra perfume', 'shower gel', 'black tape',
+                    'clothes hangers', 'mach turbo 3', 'hangers for kitchen', 'cooking pot', 'wooden spatula',
+                    'E27 bulb', 'toothpick', 'lower wattage E14 bulb', 'grater', 'candles', 'scan qr code',
+                    'salad', 'chia seeds', 'protein bars', 'rewe food', 'lanka', 'hair band',
+                
+                    // Specific Quantities (Optional - if supporting free text match or shopping notes)
+                    'broccoli 500 grams', 'carrot 1-2', 'garlic cloves 5', '250 chicken breast'
                 ];
+        
                 this.selectedAutocompleteIndex = -1;
                 // Search state
                 this.itemsSearchTerm = '';
