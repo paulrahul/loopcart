@@ -809,6 +809,8 @@
         const app = new LoopCart();
 
         // --- Google API Config ---
+        // Set spreadsheet name based on environment
+        const SPREADSHEET_NAME = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'LoopCart-testing' : 'LoopCart';
         const GOOGLE_CLIENT_ID = '241832316729-il4a6ntr95kduo99tqjmjaknreabton8.apps.googleusercontent.com'; // TODO: Replace with your actual client ID
         const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
         let googleAuthInstance = null;
@@ -820,8 +822,8 @@
             // Check localStorage first
             loopCartSpreadsheetId = localStorage.getItem('loopcart-spreadsheet-id');
             if (loopCartSpreadsheetId) return loopCartSpreadsheetId;
-            // Search for spreadsheet named 'LoopCart'
-            const query = "name = 'LoopCart' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false";
+            // Search for spreadsheet named SPREADSHEET_NAME
+            const query = `name = '${SPREADSHEET_NAME}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
             const resp = await gapi.client.drive.files.list({
                 q: query,
                 fields: 'files(id, name)',
@@ -834,7 +836,7 @@
             }
             // Not found, create it
             const createResp = await gapi.client.sheets.spreadsheets.create({
-                properties: { title: 'LoopCart' }
+                properties: { title: SPREADSHEET_NAME }
             });
             loopCartSpreadsheetId = createResp.result.spreadsheetId;
             localStorage.setItem('loopcart-spreadsheet-id', loopCartSpreadsheetId);
