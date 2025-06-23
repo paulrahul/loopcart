@@ -353,6 +353,12 @@
                     this.closeCard();
                 });
 
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        this.closeCard();
+                    }
+                });
+
                 // Add item button
                 document.getElementById('add-item-btn').addEventListener('click', () => {
                     this.addItem();
