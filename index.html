@@ -363,9 +363,9 @@
                 this.init();
             }
 
-            init() {
+            async init() {
                 this.setupTheme();
-                this.loadCards();
+                // await this.loadCards();
                 this.bindEvents();
                 this.renderHome();
             }
@@ -378,7 +378,56 @@
                 }
             }
 
-            loadCards() {
+            async loadCards() {
+                // Only try Google Sheets if signed in and spreadsheet is available
+                if (googleAuthInstance && googleAuthInstance.isSignedIn.get()) {
+                    let spreadsheetId = localStorage.getItem('loopcart-spreadsheet-id');
+                    // If not in localStorage, search Drive (but do NOT create)
+                    if (!spreadsheetId) {
+                        try {
+                            const query = `name = '${SPREADSHEET_NAME}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`;
+                            const resp = await gapi.client.drive.files.list({
+                                q: query,
+                                fields: 'files(id, name)',
+                                spaces: 'drive'
+                            });
+                            if (resp.result.files && resp.result.files.length > 0) {
+                                spreadsheetId = resp.result.files[0].id;
+                                localStorage.setItem('loopcart-spreadsheet-id', spreadsheetId);
+                            }
+                        } catch (err) {
+                            // Ignore Drive search errors, fallback to local
+                        }
+                    }
+                    if (spreadsheetId) {
+                        try {
+                            const resp = await gapi.client.sheets.spreadsheets.values.get({
+                                spreadsheetId,
+                                range: 'Sheet1!A1',
+                            });
+                            const values = resp.result.values;
+                            if (values && values.length > 0 && values[0][0]) {
+                                const json = values[0][0];
+                                try {
+                                    const cards = JSON.parse(json);
+                                    if (Array.isArray(cards)) {
+                                        this.cards = cards;
+                                        showSyncStatus('Loaded from Google Drive!', true);
+                                        return;
+                                    }
+                                } catch (e) {
+                                    showSyncStatus('Google data corrupted, loading local.', false);
+                                }
+                            } else {
+                                showSyncStatus('No data in Google Sheet, loading local.', false);
+                            }
+                        } catch (err) {
+                            showSyncStatus('Failed to load from Google: ' + (err.result?.error?.message || err.message), false);
+                        }
+                    }
+                }
+
+                // Fallback to localStorage
                 const stored = localStorage.getItem('loopcart-cards');
                 this.cards = stored ? JSON.parse(stored) : [];
             }
@@ -994,6 +1043,10 @@
                 });
                 googleAuthInstance = gapi.auth2.getAuthInstance();
                 updateSyncButton();
+                
+                // Load cards from Google Sheets if signed in, after Google API is ready
+                await app.loadCards();
+                app.renderHome();
             });
 
             // Initial button state.
