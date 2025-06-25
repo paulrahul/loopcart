@@ -157,7 +157,7 @@
             <div class="max-w-6xl mx-auto px-4 py-4 flex items-center">
                 <!-- Left (empty, for spacing) -->
                 <div class="w-0 md:w-24">
-                    <button id="test-data-btn" class="ml-2 p-2 rounded-lg flex items-center" title="Test Data">
+                    <button id="test-data-btn" class="hidden ml-2 p-2 rounded-lg flex items-center" title="Test Data">
                         Test Data
                     </button>
                 </div>
@@ -1065,6 +1065,12 @@
             }
         };
 
+        async function syncFromCloud() {
+            // Load cards from Google Sheets if signed in, after Google API is ready
+            await app.loadCards();
+            app.renderHome();
+        }
+
         // --- Patch Google sign-in to sync all cards ---
         async function handleGoogleSignIn() {
             if (!googleAuthInstance) {
@@ -1076,9 +1082,10 @@
                 googleUser = googleAuthInstance.currentUser.get();
                 updateSyncButton();
                 // Sync all cards if any exist
-                if (app.cards && app.cards.length > 0) {
-                    syncAllCardsToSheet(app.cards);
-                }
+                //if (app.cards && app.cards.length > 0) {
+                //    syncAllCardsToSheet(app.cards);
+                //}
+                await syncFromCloud();
                 showSyncStatus('Signed in to Google Drive!', true);
             } catch (err) {
                 console.error('Stack trace:', err); // Logs the full stack trace
@@ -1116,8 +1123,9 @@
                 updateSyncButton();
                 
                 // Load cards from Google Sheets if signed in, after Google API is ready
-                await app.loadCards();
-                app.renderHome();
+                //await app.loadCards();
+                //app.renderHome();
+                await syncFromCloud();
             });
 
             // Initial button state.
