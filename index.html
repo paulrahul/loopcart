@@ -650,6 +650,8 @@
                 
                 this.currentCard = newCard;
                 this.currentCardId = newCard.id;
+                // Take a deep snapshot for change detection
+                this.originalCardSnapshot = JSON.stringify(this.currentCard);
                 this.showCardEditor();
             }
 
@@ -659,6 +661,8 @@
                     // Default sorting to 0 if missing (backward compatibility)
                     this.currentCard = { ...card, items: [...card.items], sorting: card.sorting !== undefined ? card.sorting : 0 };
                     this.currentCardId = cardId;
+                    // Take a deep snapshot for change detection
+                    this.originalCardSnapshot = JSON.stringify(this.currentCard);
                     this.showCardEditor();
                 }
             }
@@ -752,20 +756,25 @@
 
             closeCard() {
                 if (this.currentCard) {
-                    // Save or update card
-                    const existingIndex = this.cards.findIndex(c => c.id === this.currentCardId);
-                    
-                    if (existingIndex >= 0) {
-                        this.cards[existingIndex] = this.currentCard;
-                    } else {
-                        this.cards.push(this.currentCard);
+                    // Compare with original snapshot
+                    const hasChanged = JSON.stringify(this.currentCard) !== this.originalCardSnapshot;
+                    if (hasChanged) {
+                        // Save or update card
+                        const existingIndex = this.cards.findIndex(c => c.id === this.currentCardId);
+
+                        if (existingIndex >= 0) {
+                            this.cards[existingIndex] = this.currentCard;
+                        } else {
+                            this.cards.push(this.currentCard);
+                        }
+                        this.saveCards();
                     }
-                    
-                    this.saveCards();
                     document.getElementById('card-editor').classList.add('hidden');
                     document.getElementById('home-screen').classList.remove('hidden');
 
                     this.renderHome();
+                    // Clear snapshot
+                    this.originalCardSnapshot = null;
                 }
             }
 
@@ -1184,14 +1193,15 @@
         // --- Patch LoopCart to sync all cards on card close ---
         const originalCloseCard = LoopCart.prototype.closeCard;
         LoopCart.prototype.closeCard = function() {
+            // Compare with original snapshot before syncing
+            const hasChanged = this.currentCard && JSON.stringify(this.currentCard) !== this.originalCardSnapshot;
             originalCloseCard.apply(this, arguments);
-            // Sync all cards after closing card (if signed in)
-            if (googleAuthInstance && googleAuthInstance.isSignedIn.get() && this.cards.length > 0 && this.currentCard) {
+            // Sync all cards after closing card (if signed in and changed)
+            if (hasChanged && googleAuthInstance && googleAuthInstance.isSignedIn.get() && this.cards.length > 0 && this.currentCard) {
                 syncAllCardsToSheet(this.cards);
-
-                this.currentCard = null;
-                this.currentCardId = null;
             }
+            this.currentCard = null;
+            this.currentCardId = null;
         };
 
         async function syncFromCloud() {
