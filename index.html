@@ -261,6 +261,13 @@
     </div>
 
     <script>
+        // Sorting logic names and values
+        const SORTING_LOGICS = [
+            { value: 0, label: 'default' },
+            { value: 1, label: 'loopy' },
+            { value: 2, label: 'todo' }
+        ];
+
         class LoopCart {
             constructor() {
                 this.cards = [];
@@ -423,7 +430,8 @@
                         let newCard = {
                             id: localCard.id,
                             card: localCard.card,
-                            items: this.mergeItems(cloudCard.items, localCard.items)
+                            items: this.mergeItems(cloudCard.items, localCard.items),
+                            sorting: cloudCard.sorting !== undefined ? cloudCard.sorting : (localCard.sorting !== undefined ? localCard.sorting : 0)
                         };
 
                         resultCards.push(newCard);
@@ -626,7 +634,8 @@
                 const newCard = {
                     id: Date.now().toString(),
                     card: '',
-                    items: []
+                    items: [],
+                    sorting: 0 // Default sorting
                 };
                 
                 this.currentCard = newCard;
@@ -637,7 +646,8 @@
             editCard(cardId) {
                 const card = this.cards.find(c => c.id === cardId);
                 if (card) {
-                    this.currentCard = { ...card, items: [...card.items] };
+                    // Default sorting to 0 if missing (backward compatibility)
+                    this.currentCard = { ...card, items: [...card.items], sorting: card.sorting !== undefined ? card.sorting : 0 };
                     this.currentCardId = cardId;
                     this.showCardEditor();
                 }
@@ -655,6 +665,27 @@
                 this.itemsSearchExpanded = false;
                 document.getElementById('items-search-input').value = '';
                 document.getElementById('items-search-container').classList.remove('expanded');
+                
+                // Render sorting dropdown
+                let sortingDropdown = document.getElementById('sorting-dropdown');
+                if (!sortingDropdown) {
+                    const headerDiv = document.querySelector('#card-editor .flex.justify-between.items-center');
+                    sortingDropdown = document.createElement('select');
+                    sortingDropdown.id = 'sorting-dropdown';
+                    sortingDropdown.className = 'ml-2 px-2 py-1 rounded border border-blue-300 dark:border-blue-600 bg-blue-500 dark:bg-blue-500 text-gray-800 dark:text-white';
+                    SORTING_LOGICS.forEach(opt => {
+                        const option = document.createElement('option');
+                        option.value = opt.value;
+                        option.textContent = opt.label;
+                        sortingDropdown.appendChild(option);
+                    });
+                    headerDiv.insertBefore(sortingDropdown, headerDiv.lastElementChild); // before close button
+                    sortingDropdown.addEventListener('change', (e) => {
+                        this.currentCard.sorting = parseInt(e.target.value);
+                        this.renderItems();
+                    });
+                }
+                sortingDropdown.value = this.currentCard.sorting;
                 
                 // Render items
                 this.renderItems();
@@ -751,26 +782,25 @@
                     const term = this.itemsSearchTerm.trim().toLowerCase();
                     items = items.filter(item => item.name.toLowerCase().includes(term));
                 }
-                const unchecked = items.filter(item => !item.checked);
-                const checked = items.filter(item => item.checked);
-                
-                // Sort unchecked items
-                unchecked.sort((a, b) => {
-                    // Most recently added first
-                    return b.last_added_time - a.last_added_time;
-                });
-                
-                // Sort checked items
-                checked.sort((a, b) => {
-                    // Most frequently checked first (primary)
-                    if (a.checked_count !== b.checked_count) {
-                        return b.checked_count - a.checked_count;
-                    }
-                    // Least recently checked first (secondary)
-                    return a.last_checked_time - b.last_checked_time;
-                });
-                
-                return [...unchecked, ...checked];
+                const sorting = card.sorting !== undefined ? card.sorting : 0;
+                if (sorting === 1) { // Loopy (current logic)
+                    const unchecked = items.filter(item => !item.checked);
+                    const checked = items.filter(item => item.checked);
+                    unchecked.sort((a, b) => b.last_added_time - a.last_added_time);
+                    checked.sort((a, b) => {
+                        if (a.checked_count !== b.checked_count) {
+                            return b.checked_count - a.checked_count;
+                        }
+                        return a.last_checked_time - b.last_checked_time;
+                    });
+                    return [...unchecked, ...checked];
+                } else if (sorting === 2) { // Todo
+                    // Only unchecked, earliest added first
+                    return items.filter(item => !item.checked).sort((a, b) => a.last_added_time - b.last_added_time);
+                } else { // Default
+                    // All items as added (by last_added_time ascending)
+                    return [...items].sort((a, b) => a.last_added_time - b.last_added_time);
+                }
             }
 
             renderItems() {
@@ -816,12 +846,18 @@
                     const title = card.card || 'Untitled List';
                     const itemCount = card.items.length;
                     const checkedCount = card.items.filter(item => item.checked).length;
+                    const sorting = card.sorting !== undefined ? card.sorting : 0;
                     
                     cardDiv.innerHTML = `
-                        <button class="absolute top-2 right-2 p-1 rounded hover:bg-red-100 dark:hover:bg-red-300 transition-colors delete-card-btn" title="Delete card">
-                            <span class="material-symbols-outlined text-red-500">delete</span>
-                        </button>
-                        <h3 class="font-semibold text-gray-800 dark:text-white mb-2 truncate">${title}</h3>
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="font-semibold text-gray-800 dark:text-white truncate">${title}</h3>
+                            <div class="flex items-center space-x-2">
+                                <span class="px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-semibold">${SORTING_LOGICS.find(l => l.value == sorting).label}</span>
+                                <button class="p-1 rounded hover:bg-red-100 dark:hover:bg-red-300 transition-colors delete-card-btn" title="Delete card">
+                                    <span class="material-symbols-outlined text-red-500">delete</span>
+                                </button>
+                            </div>
+                        </div>
                         <p class="text-gray-600 dark:text-gray-300 text-sm mb-3">${itemCount} items, ${checkedCount} completed</p>
                         <div class="space-y-1">
                             ${this.getSortedItems(card).slice(0, 3).map(item => `
@@ -1170,7 +1206,8 @@
                 testCard = {
                     id: Date.now().toString(),
                     card: "TestData",
-                    items: []
+                    items: [],
+                    sorting: 0 // Default sorting
                 };
                 localCards.push(testCard);
             }
