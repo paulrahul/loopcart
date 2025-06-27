@@ -441,7 +441,8 @@
                             id: localCard.id,
                             card: localCard.card,
                             items: this.mergeItems(cloudCard.items, localCard.items),
-                            sorting: cloudCard.sorting !== undefined ? cloudCard.sorting : (localCard.sorting !== undefined ? localCard.sorting : 0)
+                            sorting: cloudCard.sorting !== undefined ? cloudCard.sorting : (localCard.sorting !== undefined ? localCard.sorting : 0),
+                            pinned: cloudCard.pinned === true
                         };
 
                         resultCards.push(newCard);
@@ -645,7 +646,8 @@
                     id: Date.now().toString(),
                     card: '',
                     items: [],
-                    sorting: 0 // Default sorting
+                    sorting: 0, // Default sorting
+                    pinned: false // New pinned attribute
                 };
                 
                 this.currentCard = newCard;
@@ -659,7 +661,7 @@
                 const card = this.cards.find(c => c.id === cardId);
                 if (card) {
                     // Default sorting to 0 if missing (backward compatibility)
-                    this.currentCard = { ...card, items: [...card.items], sorting: card.sorting !== undefined ? card.sorting : 0 };
+                    this.currentCard = { ...card, items: [...card.items], sorting: card.sorting !== undefined ? card.sorting : 0, pinned: card.pinned === true };
                     this.currentCardId = cardId;
                     // Take a deep snapshot for change detection
                     this.originalCardSnapshot = JSON.stringify(this.currentCard);
@@ -680,10 +682,43 @@
                 document.getElementById('items-search-input').value = '';
                 document.getElementById('items-search-container').classList.remove('expanded');
                 
-                // Render sorting dropdown
+                // Render sorting dropdown and pin icon
+                const headerDiv = document.querySelector('#card-editor .flex.items-center.space-x-2');
+                // --- Pin Button ---
+                let pinBtn = document.getElementById('pin-card-btn');
+                if (!pinBtn) {
+                    pinBtn = document.createElement('button');
+                    pinBtn.id = 'pin-card-btn';
+                    pinBtn.className = 'mr-2 p-1 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900 flex items-center justify-center';
+                    pinBtn.title = 'Pin card';
+                    pinBtn.innerHTML = `<span class="material-symbols-outlined text-blue-600 dark:text-blue-400" id="pin-icon">push_pin</span>`;
+                    // We'll insert this before the sorting dropdown below
+                }
+                // Set icon state
+                const pinIcon = pinBtn.querySelector('#pin-icon');
+                if (this.currentCard.pinned) {
+                    pinIcon.textContent = 'push_pin';
+                    pinIcon.classList.add('font-bold');
+                    pinBtn.title = 'Unpin card';
+                } else {
+                    pinIcon.textContent = 'push_pin';
+                    pinIcon.classList.remove('font-bold');
+                    pinBtn.title = 'Pin card';
+                }
+                pinIcon.style.transform = this.currentCard.pinned ? 'rotate(-45deg)' : 'none';
+                pinBtn.onclick = () => {
+                    this.currentCard.pinned = !this.currentCard.pinned;
+                    if (this.currentCard.pinned) {
+                        pinIcon.style.transform = 'rotate(-45deg)';
+                        pinBtn.title = 'Unpin card';
+                    } else {
+                        pinIcon.style.transform = 'none';
+                        pinBtn.title = 'Pin card';
+                    }
+                };
+                // --- Sorting Dropdown ---
                 let sortingDropdown = document.getElementById('sorting-dropdown');
                 if (!sortingDropdown) {
-                    const headerDiv = document.querySelector('#card-editor .flex.items-center.space-x-2');
                     sortingDropdown = document.createElement('select');
                     sortingDropdown.id = 'sorting-dropdown';
                     sortingDropdown.className = 'ml-2 px-2 py-1 rounded border border-blue-300 dark:border-blue-600 bg-blue-500 dark:bg-blue-500 text-white dark:text-white';
@@ -693,9 +728,10 @@
                         option.textContent = opt.label;
                         sortingDropdown.appendChild(option);
                     });
-                    // Insert dropdown first
-                    headerDiv.insertBefore(sortingDropdown, headerDiv.lastElementChild); // before close button
-                    // Then insert info icon after dropdown
+                    // Insert pinBtn and sortingDropdown before the close button (lastElementChild)
+                    headerDiv.insertBefore(sortingDropdown, headerDiv.lastElementChild);
+                    headerDiv.insertBefore(pinBtn, sortingDropdown);
+                    // --- Info Icon ---
                     let sortingInfoIcon = document.getElementById('sorting-info-icon');
                     if (!sortingInfoIcon) {
                         sortingInfoIcon = document.createElement('span');
@@ -740,6 +776,11 @@
                         this.currentCard.sorting = parseInt(e.target.value);
                         this.renderItems();
                     });
+                } else {
+                    // If already present, just update their positions and values
+                    if (pinBtn.parentNode !== headerDiv || pinBtn.nextSibling !== sortingDropdown) {
+                        headerDiv.insertBefore(pinBtn, sortingDropdown);
+                    }
                 }
                 sortingDropdown.value = this.currentCard.sorting;
                 
@@ -806,6 +847,7 @@
                     
                     input.value = '';
                     this.renderItems();
+                    document.getElementById('new-item-input').focus();
                 }  // if word
             }
 
@@ -899,19 +941,23 @@
             renderHome() {
                 const container = document.getElementById('cards-container');
                 container.innerHTML = '';
-                
-                this.cards.forEach(card => {
+                // Sort: pinned cards first (in original order), then unpinned (in original order)
+                const pinned = this.cards.filter(c => c.pinned);
+                const unpinned = this.cards.filter(c => !c.pinned);
+                const orderedCards = [...pinned, ...unpinned];
+                orderedCards.forEach(card => {
                     const cardDiv = document.createElement('div');
                     cardDiv.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-4 hover:shadow-lg transition-shadow cursor-pointer card-enter relative';
-                    
                     const title = card.card || 'Untitled List';
                     const itemCount = card.items.length;
                     const checkedCount = card.items.filter(item => item.checked).length;
                     const sorting = card.sorting !== undefined ? card.sorting : 0;
-                    
                     cardDiv.innerHTML = `
                         <div class="flex items-center justify-between mb-2">
-                            <h3 class="font-semibold text-gray-800 dark:text-white truncate">${title}</h3>
+                            <div class="flex items-center">
+                                <h3 class="font-semibold text-gray-800 dark:text-white truncate mr-2">${title}</h3>
+                                ${card.pinned ? `<span class='material-symbols-outlined text-blue-600 dark:text-blue-400 mr-1' style='transform: rotate(-45deg);'>push_pin</span>` : ''}
+                            </div>
                             <div class="flex items-center space-x-2">
                                 <span class="px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-semibold">${SORTING_LOGICS.find(l => l.value == sorting).label}</span>
                                 <span class="material-symbols-outlined text-blue-600 dark:text-blue-500 align-middle cursor-pointer info-icon" title="Info">info</span>
@@ -931,7 +977,6 @@
                             ${card.items.length > 3 ? `<p class="text-xs text-gray-500 dark:text-gray-400">+${card.items.length - 3} more items</p>` : ''}
                         </div>
                     `;
-                    
                     // Prevent card edit when clicking delete
                     cardDiv.addEventListener('click', (e) => {
                         if (e.target.closest('.delete-card-btn')) return;
@@ -992,6 +1037,10 @@
             deleteCard(cardId) {
                 this.cards = this.cards.filter(c => c.id !== cardId);
                 this.saveCards();
+                // Sync to Google Drive if signed in
+                if (googleAuthInstance && googleAuthInstance.isSignedIn.get()) {
+                    syncAllCardsToSheet(this.cards);
+                }
                 this.renderHome();
             }
 
@@ -1310,7 +1359,8 @@
                     id: Date.now().toString(),
                     card: "TestData",
                     items: [],
-                    sorting: 0 // Default sorting
+                    sorting: 0, // Default sorting
+                    pinned: false // New pinned attribute
                 };
                 localCards.push(testCard);
             }
