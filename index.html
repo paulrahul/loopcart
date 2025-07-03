@@ -438,23 +438,32 @@
 
             mergeCards(cloudCards, localCards) {
                 let resultCards = [];
+                let hasChanged = false;
 
                 for (const localCard of localCards) {
                     const exists = cloudCards.some(c => c.card === localCard.card && c.id === localCard.id);
                     if (!exists) {
                         resultCards.push(localCard);
+                        hasChanged = true;
                     } else {
                         const cloudCard = cloudCards.find(c => c.card === localCard.card && c.id === localCard.id);
-                        // Add the more latest one.
-                        let newCard = {
-                            id: localCard.id,
-                            card: localCard.card,
-                            items: this.mergeItems(cloudCard.items, localCard.items),
-                            sorting: cloudCard.sorting !== undefined ? cloudCard.sorting : (localCard.sorting !== undefined ? localCard.sorting : 0),
-                            pinned: cloudCard.pinned === true
-                        };
 
-                        resultCards.push(newCard);
+                        // Check if the cards are different.
+                        const hasCardChanged = JSON.stringify(cloudCard) !== JSON.stringify(localCard);
+                        if (hasCardChanged) {
+                            hasChanged = true;
+                            // Add the more latest one.
+                            let newCard = {
+                                id: localCard.id,
+                                card: localCard.card,
+                                items: this.mergeItems(cloudCard.items, localCard.items),
+                                sorting: cloudCard.sorting !== undefined ? cloudCard.sorting : (localCard.sorting !== undefined ? localCard.sorting : 0),
+                                pinned: cloudCard.pinned === true
+                            };
+                            resultCards.push(newCard);
+                        } else {
+                            resultCards.push(localCard);
+                        }
                     }
                 }
 
@@ -467,7 +476,7 @@
                     // merged in the previous for loop.
                 }
 
-                return resultCards;
+                return { cards: resultCards, hasChanged: hasChanged };
             }
 
             async loadCards() {
@@ -528,11 +537,14 @@
                 const stored = localStorage.getItem('loopcart-cards');
                 const localCards = stored ? JSON.parse(stored) : [];
 
-                this.cards = this.mergeCards(cloudCards, localCards);
+                const { cards, hasChanged } = this.mergeCards(cloudCards, localCards);
+                this.cards = cards;
+                return hasChanged;
             }
 
             saveCards() {
                 localStorage.setItem('loopcart-cards', JSON.stringify(this.cards));
+                syncAllCardsToSheet(this.cards);
             }
 
             bindEvents() {
@@ -1046,10 +1058,6 @@
             deleteCard(cardId) {
                 this.cards = this.cards.filter(c => c.id !== cardId);
                 this.saveCards();
-                // Sync to Google Drive if signed in
-                if (googleAuthInstance && googleAuthInstance.isSignedIn.get()) {
-                    syncAllCardsToSheet(this.cards);
-                }
                 this.renderHome();
             }
 
@@ -1226,7 +1234,7 @@
                     valueInputOption: 'RAW',
                     resource: { values: [[jsonData]] }
                 });
-                showSyncStatus('Synced to Google Drive!', true);
+                showSyncStatus('Saved to Google Drive!', true);
             } catch (err) {
                 console.error('Stack trace:', err.stack); // Logs the full stack trace
                 showSyncStatus('Sync failed: ' + (err.result?.error?.message || err.message), false);
@@ -1251,20 +1259,17 @@
         // --- Patch LoopCart to sync all cards on card close ---
         const originalCloseCard = LoopCart.prototype.closeCard;
         LoopCart.prototype.closeCard = function() {
-            // Compare with original snapshot before syncing
-            const hasChanged = this.currentCard && JSON.stringify(this.currentCard) !== this.originalCardSnapshot;
             originalCloseCard.apply(this, arguments);
-            // Sync all cards after closing card (if signed in and changed)
-            if (hasChanged && googleAuthInstance && googleAuthInstance.isSignedIn.get() && this.cards.length > 0 && this.currentCard) {
-                syncAllCardsToSheet(this.cards);
-            }
             this.currentCard = null;
             this.currentCardId = null;
         };
 
         async function syncFromCloud() {
             // Load cards from Google Sheets if signed in, after Google API is ready
-            await app.loadCards();
+            const hasChanged = await app.loadCards();
+            if (hasChanged) {
+                app.saveCards();
+            }
             app.renderHome();
         }
 
