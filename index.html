@@ -403,7 +403,7 @@
                 let resultItems = [];
 
                 for (const localItem of localItems) {
-                    const exists = cloudItems.some(c => c.name === localItem.name);
+                    const exists = cloudItems.some(i => i.name === localItem.name);
                     if (!exists) {
                         resultItems.push(localItem);
                     } else {
@@ -422,6 +422,15 @@
                             resultItems.push(cloudItem);
                         }
                     }
+                }
+
+                for (const cloudItem of cloudItems) {
+                    const exists = localItems.some(i => i.name === cloudItem.name);
+                    if (!exists) {
+                        resultItems.push(cloudItem);
+                    }
+                    // if same, then it would have already been resolved and
+                    // merged in the previous for loop.
                 }
 
                 return resultItems;
