@@ -190,7 +190,11 @@
         <!-- Main Content -->
         <main class="max-w-6xl mx-auto px-4 py-6">
             <!-- Home Screen -->
-            <div id="home-screen" class="block">
+            <div id="home-screen" class="block relative">
+                <!-- Floating Plus Button -->
+                <button id="floating-add-card-btn" title="Create new list" class="absolute right-0 top-0 z-20 hover:bg-blue-600 dark:text-white text-blue-500 hover:text-white rounded-full shadow-lg transition-colors flex items-center justify-center" style="margin-top: -2.5rem; margin-right: 0.25rem;">
+                    <span class="material-symbols-outlined text-3xl">add</span>
+                </button>
                 <!-- Cards Grid -->
                 <div id="cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
                     <!-- Cards will be rendered here -->
@@ -1465,6 +1469,12 @@
                         initGoogleAPI();
                     }
                 }, 100);
+            }
+
+            // Floating plus button for creating new card
+            const floatingAddBtn = document.getElementById('floating-add-card-btn');
+            if (floatingAddBtn) {
+                floatingAddBtn.addEventListener('click', () => app.createNewCard());
             }
         });
     </script>
