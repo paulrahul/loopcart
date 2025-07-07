@@ -1352,6 +1352,8 @@
                 app.saveCards();
             }
             app.renderHome();
+            // --- Update last sync time ---
+            localStorage.setItem('loopcart-last-sync', Date.now().toString());
         }
 
         // --- Patch Google sign-in to sync all cards ---
@@ -1370,6 +1372,8 @@
                 //}
                 await syncFromCloud();
                 showSyncStatus('Signed in to Google Drive!', true);
+                // --- Update last sync time ---
+                localStorage.setItem('loopcart-last-sync', Date.now().toString());
             } catch (err) {
                 console.error('Stack trace:', err); // Logs the full stack trace
                 showSyncStatus('Google sign-in failed.', false);
@@ -1591,6 +1595,30 @@
                     localStorage.setItem('uspSectionDismissed', '1');
                 });
             }
+
+            // --- Auto-refresh from cloud if tab is inactive for 30+ minutes ---
+            const CLOUD_REFRESH_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+            function maybeRefreshFromCloud() {
+                const lastSync = parseInt(localStorage.getItem('loopcart-last-sync') || '0', 10);
+                const now = Date.now();
+                if (
+                    googleAuthInstance &&
+                    googleAuthInstance.isSignedIn.get() &&
+                    (isNaN(lastSync) || (now - lastSync > CLOUD_REFRESH_THRESHOLD_MS))
+                ) {
+                    // Update timestamp immediately to prevent double-trigger
+                    localStorage.setItem('loopcart-last-sync', now.toString());
+                    syncFromCloud();
+                }
+            }
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    maybeRefreshFromCloud();
+                }
+            });
+            window.addEventListener('focus', () => {
+                maybeRefreshFromCloud();
+            });
         });
     </script>
 </body>
