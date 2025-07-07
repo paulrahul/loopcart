@@ -198,10 +198,10 @@
         <!-- Header -->
         <header class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
             <div class="max-w-6xl mx-auto px-4 py-4 flex items-center">
-                <!-- Left (empty, for spacing) -->
-                <div class="w-0 md:w-24">
-                    <button id="test-data-btn" class="hidden ml-2 p-2 rounded-lg flex items-center" title="Test Data">
-                        Test Data
+                <!-- Left: About button -->
+                <div class="flex-shrink-0 flex items-center">
+                    <button id="about-btn" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center" title="About LoopCart">
+                        <span class="material-symbols-outlined">help_outline</span>
                     </button>
                 </div>
                 <!-- Centered Title -->
@@ -209,7 +209,7 @@
                     <h1 class="text-2xl font-bold text-gray-800 dark:text-white text-center">LoopCart</h1>
                 </div>
                 <!-- Right-aligned buttons -->
-                <div class="flex items-center space-x-2 whitespace-nowrap">
+                <div class="flex-shrink-0 flex items-center space-x-2 whitespace-nowrap">
                     <button id="theme-toggle" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
                         <svg class="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
@@ -219,7 +219,7 @@
                         <span class="material-symbols-outlined mr-1 text-white">
                             add_to_drive
                         </span>
-                        <span class="font-medium text-white">Sync to Google Drive</span>
+                        <span class="font-medium text-white hidden sm:inline">Sync to Google Drive</span>
                     </button>
                     <button id="logout-btn" class="hidden p-2 rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center" title="Logout">
                         <span class="material-symbols-outlined mr-1">
@@ -322,6 +322,19 @@
         <footer class="fixed bottom-0 left-0 w-full bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 text-center py-2 text-[0.5em] text-gray-500 dark:text-gray-400 z-40">
           🔒 Your data stays private: LoopCart only saves your lists to your own Google Drive. Nothing is sent anywhere else.
         </footer>
+    </div>
+
+    <div id="about-modal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 hidden">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 max-w-lg w-full relative text-gray-800 dark:text-gray-200">
+        <button id="about-modal-close" class="absolute top-2 right-2 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xl">&times;</button>
+        <h2 class="text-xl font-bold mb-2">About LoopCart</h2>
+        <ul class="mb-4 list-disc pl-5 text-sm">
+          <li><b>Smart Sorting:</b> Choose the best way to view your lists: <b>Default</b> (as added), <b>Loopy</b> (for recurring groceries), <b>Todo</b> (longest pending first). Each mode is tailored for your context—see your most relevant items first.</li>
+          <li><b>Private by Design:</b> Your data is never sent to any server. Syncing is optional and only saves to your own Google Drive, in a spreadsheet named <b>LoopCart</b>.</li>
+          <li><b>Single-Page App:</b> Everything runs in your browser for speed and privacy. No data leaves your device except when you choose to sync.</li>
+        </ul>
+        <p class="text-xs text-gray-500 dark:text-gray-400">For more details, see the info icons next to features, or <a href="mailto:paul.rahul@gmail.com" class="text-blue-500 hover:text-blue-700 dark:hover:text-blue-400">contact the developer</a>.</p>
+      </div>
     </div>
 
     <script>
@@ -1056,11 +1069,11 @@
                     const sorting = card.sorting !== undefined ? card.sorting : 0;
                     cardDiv.innerHTML = `
                         <div class="flex items-center justify-between mb-2">
-                            <div class="flex items-center">
-                                <h3 class="font-semibold text-gray-800 dark:text-white truncate mr-2">${title}</h3>
+                            <div class="flex items-center min-w-0">
+                                <h3 class="font-semibold text-gray-800 dark:text-white truncate max-w-[120px] md:max-w-[160px] mr-2">${title}</h3>
                                 ${card.pinned ? `<span class='material-symbols-outlined text-blue-600 dark:text-blue-400 mr-1' style='transform: rotate(-45deg);'>push_pin</span>` : ''}
                             </div>
-                            <div class="flex items-center space-x-2">
+                            <div class="flex items-center space-x-2 flex-none">
                                 <span class="px-2 py-0.5 rounded-full ${SORTING_COLOR_CLASSES[sorting] || 'sorting-label-default'} text-xs font-semibold">${SORTING_LOGICS.find(l => l.value == sorting).label}</span>
                                 <span class="material-symbols-outlined text-blue-600 dark:text-blue-500 align-middle cursor-pointer info-icon" title="Info">info</span>
                                 <button class="p-1 rounded hover:bg-red-100 dark:hover:bg-red-300 transition-colors delete-card-btn" title="Delete card">
@@ -1619,6 +1632,29 @@
             window.addEventListener('focus', () => {
                 maybeRefreshFromCloud();
             });
+
+            // About modal logic
+            const aboutBtn = document.getElementById('about-btn');
+            const aboutModal = document.getElementById('about-modal');
+            const aboutModalClose = document.getElementById('about-modal-close');
+            if (aboutBtn && aboutModal && aboutModalClose) {
+                aboutBtn.addEventListener('click', () => {
+                    aboutModal.classList.remove('hidden');
+                });
+                aboutModalClose.addEventListener('click', () => {
+                    aboutModal.classList.add('hidden');
+                });
+                aboutModal.addEventListener('click', (e) => {
+                    if (e.target === aboutModal) {
+                        aboutModal.classList.add('hidden');
+                    }
+                });
+                document.addEventListener('keydown', (e) => {
+                    if (!aboutModal.classList.contains('hidden') && e.key === 'Escape') {
+                        aboutModal.classList.add('hidden');
+                    }
+                });
+            }
         });
     </script>
 </body>
