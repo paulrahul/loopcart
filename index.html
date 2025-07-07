@@ -148,6 +148,49 @@
             width: 180px;
             opacity: 1;
         }
+        /* Sorting label pastel backgrounds */
+        .sorting-label-default {
+            background-color: #b5d0ff; /* pastel blue */
+            color: #23406e;
+        }
+        .dark .sorting-label-default {
+            background-color: #3b5a7a;
+            color: #dbeafe;
+        }
+        .sorting-label-loopy {
+            background-color: #ffe6b3; /* pastel yellow/orange */
+            color: #7a5a1e;
+        }
+        .dark .sorting-label-loopy {
+            background-color: #7a5a1e;
+            color: #fff7e6;
+        }
+        .sorting-label-todo {
+            background-color: #b7f7d8; /* pastel green */
+            color: #1e5a4b;
+        }
+        .dark .sorting-label-todo {
+            background-color: #1e5a4b;
+            color: #d1fae5;
+        }
+        kbd {
+            display: inline-block;
+            padding: 2px 7px;
+            font-size: 0.7em !important;
+            font-family: inherit;
+            background: #f3f4f6;
+            color: #374151;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            box-shadow: 0 1px 0 #d1d5db;
+            margin: 0 2px;
+        }
+        .dark kbd {
+            background: #374151;
+            color: #f3f4f6;
+            border-color: #4b5563;
+            box-shadow: 0 1px 0 #4b5563;
+        }
     </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
@@ -207,7 +250,9 @@
                             <svg class="w-12 h-12 mx-auto text-gray-400 group-hover:text-blue-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
                             </svg>
-                            <p class="text-gray-600 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium">Create new list</p>
+                            <p class="text-gray-600 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium">
+                              Create new list <span class="ml-2"><kbd>Shift</kbd> + <kbd>N</kbd></span>
+                            </p>
                         </div>
                     </button>
                 </div>
@@ -280,6 +325,14 @@
             0: 'Default: All items are shown in the order they were added. Checked items are still shown.',
             1: 'Loopy: Unchecked items appear first (most recently added first). Checked items are sorted by frequency and recency. Useful for regularly shopped items like groceries.',
             2: 'Todo: Only unchecked items are shown, sorted by earliest added first. Checked items are hidden.'
+        };
+
+        // Centralized mapping for sorting color classes (easy to extend)
+        // To add a new sorting algo: 1) Add to SORTING_LOGICS, 2) Add to SORTING_DESCRIPTIONS, 3) Add here, 4) Add CSS class
+        const SORTING_COLOR_CLASSES = {
+            0: 'sorting-label-default',
+            1: 'sorting-label-loopy',
+            2: 'sorting-label-todo'
         };
 
         class LoopCart {
@@ -627,6 +680,13 @@
                         this.currentCard.card = e.target.value;
                     }
                 });
+                // Move focus to add item input on Enter in card title
+                document.getElementById('card-title').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        document.getElementById('new-item-input').focus();
+                    }
+                });
 
                 // Search icon/button
                 const searchIconBtn = document.getElementById('items-search-icon');
@@ -697,6 +757,11 @@
             showCardEditor() {
                 document.getElementById('home-screen').classList.add('hidden');
                 document.getElementById('card-editor').classList.remove('hidden');
+                
+                // Push a new state to history so back button can close the card
+                if (!history.state || history.state.view !== 'card-editor') {
+                    history.pushState({ view: 'card-editor' }, 'Card Editor');
+                }
                 
                 // Set card title
                 document.getElementById('card-title').value = this.currentCard.card;
@@ -984,7 +1049,7 @@
                                 ${card.pinned ? `<span class='material-symbols-outlined text-blue-600 dark:text-blue-400 mr-1' style='transform: rotate(-45deg);'>push_pin</span>` : ''}
                             </div>
                             <div class="flex items-center space-x-2">
-                                <span class="px-2 py-0.5 rounded-full bg-blue-500 text-white text-xs font-semibold">${SORTING_LOGICS.find(l => l.value == sorting).label}</span>
+                                <span class="px-2 py-0.5 rounded-full ${SORTING_COLOR_CLASSES[sorting] || 'sorting-label-default'} text-xs font-semibold">${SORTING_LOGICS.find(l => l.value == sorting).label}</span>
                                 <span class="material-symbols-outlined text-blue-600 dark:text-blue-500 align-middle cursor-pointer info-icon" title="Info">info</span>
                                 <button class="p-1 rounded hover:bg-red-100 dark:hover:bg-red-300 transition-colors delete-card-btn" title="Delete card">
                                     <span class="material-symbols-outlined text-red-500">delete</span>
@@ -1476,6 +1541,30 @@
             if (floatingAddBtn) {
                 floatingAddBtn.addEventListener('click', () => app.createNewCard());
             }
+
+            // Listen for browser back/forward navigation
+            window.addEventListener('popstate', () => {
+                const cardEditor = document.getElementById('card-editor');
+                if (!cardEditor.classList.contains('hidden')) {
+                    // If card editor is open, treat back as closeCard
+                    app.closeCard();
+                }
+            });
+
+            // Listen for Shift+N to create a new card from home screen
+            document.addEventListener('keydown', (e) => {
+                if (
+                    (e.key === 'N' || e.key === 'n') &&
+                    e.shiftKey &&
+                    !e.ctrlKey && !e.metaKey && !e.altKey
+                ) {
+                    const homeScreen = document.getElementById('home-screen');
+                    if (!homeScreen.classList.contains('hidden')) {
+                        e.preventDefault();
+                        app.createNewCard();
+                    }
+                }
+            });
         });
     </script>
 </body>
