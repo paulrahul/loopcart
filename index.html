@@ -6,6 +6,15 @@
     <title>LoopCart</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    <script>
+      if (location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        const link = document.createElement('link');
+        link.rel = 'icon';
+        link.type = 'image/x-icon';
+        link.href = 'static/img/favicon.ico';
+        document.head.appendChild(link);
+      }
+    </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://apis.google.com/js/api.js"></script>
@@ -269,7 +278,7 @@
             <!-- Card Editor -->
             <div id="card-editor" class="hidden">
                 <div class="max-w-2xl mx-auto">
-                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
+                    <div id="card-editor-container" class="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
                         <!-- Card Header -->
                         <div class="flex flex-wrap items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                             <input id="card-title" type="text" placeholder="List title..." class="flex-1 min-w-0 text-xl font-semibold bg-transparent border-none outline-none text-gray-800 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 truncate">
@@ -463,6 +472,16 @@
                 // Search state
                 this.itemsSearchTerm = '';
                 this.itemsSearchExpanded = false;
+
+                // Add global click-outside-to-close logic
+                document.addEventListener('mousedown', (e) => {
+                    if (this.currentCard) {
+                        const cardEditorContainer = document.getElementById('card-editor-container');
+                        if (cardEditorContainer && !cardEditorContainer.contains(e.target)) {
+                            this.closeCard();
+                        }
+                    }
+                });
                 this.init();
             }
 
@@ -1070,7 +1089,7 @@
                     cardDiv.innerHTML = `
                         <div class="flex items-center justify-between mb-2">
                             <div class="flex items-center min-w-0">
-                                <h3 class="font-semibold text-gray-800 dark:text-white truncate max-w-[120px] md:max-w-[160px] mr-2">${title}</h3>
+                                <h3 class="font-semibold text-gray-800 dark:text-white truncate max-w-[120px] md:max-w-[160px] mr-2" title="${title}">${title}</h3>
                                 ${card.pinned ? `<span class='material-symbols-outlined text-blue-600 dark:text-blue-400 mr-1' style='transform: rotate(-45deg);'>push_pin</span>` : ''}
                             </div>
                             <div class="flex items-center space-x-2 flex-none">
