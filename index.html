@@ -964,10 +964,8 @@
                     );
                     
                     if (existingItem) {
-                        // If unchecked, treat as re-adding
-                        if (!existingItem.checked) {
-                            existingItem.last_added_time = Date.now();
-                        }
+                        existingItem.checked = false;
+                        existingItem.last_added_time = Date.now();
                     } else {
                         // Add new item
                         this.currentCard.items.push({
