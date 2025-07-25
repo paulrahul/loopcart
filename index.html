@@ -643,7 +643,12 @@
                 return hasChanged;
             }
 
-            saveCards() {
+            saveCardsLocally() {
+                localStorage.setItem('loopcart-cards', JSON.stringify(this.cards));
+                //syncAllCardsToSheet(this.cards);
+            }
+
+            saveCardsAll() {
                 localStorage.setItem('loopcart-cards', JSON.stringify(this.cards));
                 syncAllCardsToSheet(this.cards);
             }
@@ -942,7 +947,8 @@
                         } else {
                             this.cards.push(this.currentCard);
                         }
-                        this.saveCards();
+                        //this.saveCardsLocally();
+                        this.syncFromCloud();
                     }
                     document.getElementById('card-editor').classList.add('hidden');
                     document.getElementById('home-screen').classList.remove('hidden');
@@ -1168,9 +1174,21 @@
 
             deleteCard(cardId) {
                 this.cards = this.cards.filter(c => c.id !== cardId);
-                this.saveCards();
+                //this.saveCardsLocally();
+                this.syncFromCloud();
                 this.renderHome();
             }
+
+            async syncFromCloud() {
+                // Load cards from Google Sheets if signed in, after Google API is ready
+                const hasChanged = await this.loadCards();
+                if (hasChanged) {
+                    this.saveCardsAll();
+                }
+                this.renderHome();
+                // --- Update last sync time ---
+                localStorage.setItem('loopcart-last-sync', Date.now().toString());
+            }            
 
             // Autocomplete functions
             handleAutocomplete(input) {
@@ -1375,17 +1393,6 @@
             this.currentCardId = null;
         };
 
-        async function syncFromCloud() {
-            // Load cards from Google Sheets if signed in, after Google API is ready
-            const hasChanged = await app.loadCards();
-            if (hasChanged) {
-                app.saveCards();
-            }
-            app.renderHome();
-            // --- Update last sync time ---
-            localStorage.setItem('loopcart-last-sync', Date.now().toString());
-        }
-
         // --- Patch Google sign-in to sync all cards ---
         async function handleGoogleSignIn() {
             if (!googleAuthInstance) {
@@ -1400,7 +1407,7 @@
                 //if (app.cards && app.cards.length > 0) {
                 //    syncAllCardsToSheet(app.cards);
                 //}
-                await syncFromCloud();
+                await app.syncFromCloud();
                 showSyncStatus('Signed in to Google Drive!', true);
                 // --- Update last sync time ---
                 localStorage.setItem('loopcart-last-sync', Date.now().toString());
@@ -1442,7 +1449,7 @@
                 // Load cards from Google Sheets if signed in, after Google API is ready
                 //await app.loadCards();
                 //app.renderHome();
-                await syncFromCloud();
+                await app.syncFromCloud();
             });
 
             // Initial button state.
@@ -1638,7 +1645,7 @@
                 ) {
                     // Update timestamp immediately to prevent double-trigger
                     localStorage.setItem('loopcart-last-sync', now.toString());
-                    syncFromCloud();
+                    app.syncFromCloud();
                 }
             }
             document.addEventListener('visibilitychange', () => {
