@@ -518,8 +518,10 @@
                             localItem.last_checked_time : localItem.last_added_time;
 
                         if (localItemLastMod > cloudItemLastMod) {
+                            // console.log(`picking local item ${localItem.name}`);
                             resultItems.push(localItem);
                         } else {
+                            // console.log(`picking cloud item ${localItem.name}`);
                             resultItems.push(cloudItem);
                         }
                     }
@@ -548,6 +550,11 @@
                         hasChanged = true;
                     } else {
                         const cloudCard = cloudCards.find(c => c.card === localCard.card && c.id === localCard.id);
+
+                        if (localCard.d || cloudCard.d) {
+                            // card has been deleted. no need to show it anymore.
+                            continue;
+                        }
 
                         // Check if the cards are different.
                         const hasCardChanged = JSON.stringify(cloudCard) !== JSON.stringify(localCard);
@@ -781,7 +788,8 @@
                     card: '',
                     items: [],
                     sorting: 0, // Default sorting
-                    pinned: false // New pinned attribute
+                    pinned: false, // New pinned attribute
+                    d: false
                 };
                 
                 this.currentCard = newCard;
@@ -947,13 +955,15 @@
                         } else {
                             this.cards.push(this.currentCard);
                         }
+
                         //this.saveCardsLocally();
                         this.saveAndSyncFromCloud();
                     }
+
                     document.getElementById('card-editor').classList.add('hidden');
                     document.getElementById('home-screen').classList.remove('hidden');
 
-                    this.renderHome();
+                    // this.renderHome();
                     // Clear snapshot
                     this.originalCardSnapshot = null;
                 }
@@ -972,6 +982,7 @@
                     if (existingItem) {
                         existingItem.checked = false;
                         existingItem.last_added_time = Date.now();
+                        existingItem.d = false;
                     } else {
                         // Add new item
                         this.currentCard.items.push({
@@ -979,7 +990,8 @@
                             checked: false,
                             checked_count: 0,
                             last_checked_time: null,
-                            last_added_time: Date.now()
+                            last_added_time: Date.now(),
+                            d: false
                         });
                     }
                     
@@ -1005,7 +1017,11 @@
             }
 
             deleteItem(index) {
-                this.currentCard.items.splice(index, 1);
+                this.currentCard.items[index].last_checked_time = Date.now();
+
+                // reset minimal fields
+                this.currentCard.items[index].d = true;
+
                 this.renderItems();
             }
 
@@ -1023,6 +1039,10 @@
                     const term = this.itemsSearchTerm.trim().toLowerCase();
                     items = items.filter(item => item.name.toLowerCase().includes(term));
                 }
+
+                // Filter only non-deleted items.
+                items = items.filter(item => !item.d);
+
                 const sorting = card.sorting !== undefined ? card.sorting : 0;
                 if (sorting === 1) { // Loopy (current logic)
                     const unchecked = items.filter(item => !item.checked);
@@ -1051,6 +1071,11 @@
                 container.innerHTML = '';
                 
                 sortedItems.forEach((item, index) => {
+                    if (item.d) {
+                        // item is deleted.
+                        return;
+                    }
+
                     const originalIndex = this.currentCard.items.indexOf(item);
                     const itemDiv = document.createElement('div');
                     itemDiv.className = `flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg item-move ${item.checked ? 'opacity-60' : ''}`;
@@ -1084,6 +1109,11 @@
                 const unpinned = this.cards.filter(c => !c.pinned);
                 const orderedCards = [...pinned, ...unpinned];
                 orderedCards.forEach(card => {
+                    if (card.d) {
+                        // card is deleted.
+                        return;
+                    }
+
                     const cardDiv = document.createElement('div');
                     cardDiv.className = 'bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 p-4 hover:shadow-lg transition-shadow cursor-pointer card-enter relative';
                     const title = card.card || 'Untitled List';
@@ -1173,10 +1203,17 @@
             }
 
             deleteCard(cardId) {
-                this.cards = this.cards.filter(c => c.id !== cardId);
-                //this.saveCardsLocally();
+                // this.cards = this.cards.filter(c => c.id !== cardId);
+                // this.saveCardsLocally();
+
+                const card = this.cards.find(c => c.id === cardId);
+
+                // resetting minimal fields.
+                card.items = [];
+                card.d = true;
+
                 this.saveAndSyncFromCloud();
-                this.renderHome();
+                // this.renderHome();
             }
 
             async saveAndSyncFromCloud() {
