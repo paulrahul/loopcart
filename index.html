@@ -948,7 +948,7 @@
                             this.cards.push(this.currentCard);
                         }
                         //this.saveCardsLocally();
-                        this.syncFromCloud();
+                        this.saveAndSyncFromCloud();
                     }
                     document.getElementById('card-editor').classList.add('hidden');
                     document.getElementById('home-screen').classList.remove('hidden');
@@ -1175,8 +1175,14 @@
             deleteCard(cardId) {
                 this.cards = this.cards.filter(c => c.id !== cardId);
                 //this.saveCardsLocally();
-                this.syncFromCloud();
+                this.saveAndSyncFromCloud();
                 this.renderHome();
+            }
+
+            async saveAndSyncFromCloud() {
+                this.saveCardsLocally();
+
+                this.syncFromCloud();
             }
 
             async syncFromCloud() {
