@@ -552,6 +552,7 @@
                         const cloudCard = cloudCards.find(c => c.card === localCard.card && c.id === localCard.id);
 
                         if (localCard.d || cloudCard.d) {
+                            hasChanged = true;
                             // card has been deleted. no need to show it anymore.
                             continue;
                         }
