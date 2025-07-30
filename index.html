@@ -681,7 +681,15 @@
 
                 document.addEventListener('keydown', (e) => {
                     if (e.key === 'Escape') {
-                        this.closeCard();
+                        if (this.itemsSearchTerm != '') {
+                            this.itemsSearchExpanded = false;
+                            searchContainer.classList.remove('expanded');
+                            this.itemsSearchTerm = '';
+                            searchInput.value = '';
+                            this.renderItems();
+                        } else {
+                            this.closeCard();
+                        }
                     }
                 });
 
@@ -777,7 +785,7 @@
                 searchInput.addEventListener('blur', () => {
                     this.itemsSearchExpanded = false;
                     searchContainer.classList.remove('expanded');
-                    this.itemsSearchTerm = '';
+                    //this.itemsSearchTerm = '';
                     searchInput.value = '';
                     this.renderItems();
                 });
