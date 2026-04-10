@@ -369,6 +369,73 @@
             2: 'sorting-label-todo'
         };
 
+        // ── Enhancement 1: Compact key schema ──────────────────────────────────
+        // Short-key wire format reduces localStorage and cloud storage by ~60%.
+        // Full keys are only used in memory; short keys are used on disk/cloud.
+
+        function compressItem(item) {
+            const out = {
+                n:   item.name,
+                k:   item.checked,
+                cc:  item.checked_count,
+                lct: item.last_checked_time,
+                lat: item.last_added_time,
+                d:   item.d,
+                pos: item.pos,
+            };
+            if (item.sub && item.sub.length > 0) {
+                out.sb = item.sub.map(compressItem);
+            }
+            return out;
+        }
+
+        function compressCard(card) {
+            return {
+                id: card.id,
+                c:  card.card,
+                i:  card.items.map(compressItem),
+                s:  card.sorting,
+                p:  card.pinned,
+                d:  card.d,
+            };
+        }
+
+        function expandItem(i) {
+            return {
+                name:              i.n,
+                checked:           i.k === true,
+                checked_count:     i.cc || 0,
+                last_checked_time: i.lct || null,
+                last_added_time:   i.lat || Date.now(),
+                d:                 i.d === true,
+                pos:               i.pos !== undefined ? i.pos : (i.lat || Date.now()),
+                sub:               (i.sb || []).map(expandItem),
+            };
+        }
+
+        function expandCard(c) {
+            return {
+                id:      c.id,
+                card:    c.c,
+                items:   (c.i || []).map(expandItem),
+                sorting: c.s !== undefined ? c.s : 0,
+                pinned:  c.p === true,
+                d:       c.d === true,
+            };
+        }
+
+        // Support both legacy full-key format and new compact format
+        function safeExpandCard(raw) {
+            if (raw.card !== undefined) return raw; // already in full-key format
+            return expandCard(raw);
+        }
+
+        function safeExpandItem(raw) {
+            if (raw.name !== undefined) return raw; // already in full-key format
+            return expandItem(raw);
+        }
+        // ── End compact key schema ─────────────────────────────────────────────
+
         class LoopCart {
             constructor() {
                 this.cards = [];
@@ -488,9 +555,23 @@
 
             async init() {
                 this.setupTheme();
-                // Load local cards immediately so the UI is not blank before Google API initialises
-                const stored = localStorage.getItem('loopcart-cards');
-                this.cards = stored ? JSON.parse(stored) : [];
+                // Load from delta store (snapshot + ops); migrate legacy key if needed
+                this.cards = this._reconstruct();
+                if (this.cards.length === 0) {
+                    const legacy = localStorage.getItem('loopcart-cards');
+                    if (legacy) {
+                        try {
+                            const legacyCards = JSON.parse(legacy);
+                            if (Array.isArray(legacyCards) && legacyCards.length > 0) {
+                                this.cards = legacyCards;
+                                const snap = { v: 2, ts: Date.now(), data: legacyCards.map(compressCard) };
+                                localStorage.setItem('lc-snap', JSON.stringify(snap));
+                                localStorage.removeItem('lc-ops');
+                                localStorage.removeItem('loopcart-cards');
+                            }
+                        } catch {}
+                    }
+                }
                 this.bindEvents();
                 this.renderHome();
                 // Cloud sync happens later via initGoogleAPI → syncFromCloud
@@ -632,11 +713,8 @@
                                 try {
                                     const cards = JSON.parse(json);
                                     if (Array.isArray(cards)) {
-                                        cloudCards = cards;
-                                        // this.cards = cards;
-                                        // showSyncStatus('Loaded from Google Drive!', true);
+                                        cloudCards = cards.map(safeExpandCard);
                                         showSyncStatus('Syncing with Google Drive!', true);
-                                        // return;
                                     }
                                 } catch (e) {
                                     console.error('Error stack: ' + e.stack);
@@ -651,9 +729,15 @@
                     }
                 }
 
-                // Fallback to localStorage
-                const stored = localStorage.getItem('loopcart-cards');
-                const localCards = stored ? JSON.parse(stored) : [];
+                // Load local state from delta store (snapshot + ops log)
+                let localCards = this._reconstruct();
+                if (localCards.length === 0) {
+                    // Migrate legacy key on first load after update
+                    const legacy = localStorage.getItem('loopcart-cards');
+                    if (legacy) {
+                        try { localCards = JSON.parse(legacy) || []; } catch {}
+                    }
+                }
 
                 const { cards, hasChanged } = this.mergeCards(cloudCards, localCards);
                 this.cards = cards;
@@ -661,12 +745,17 @@
             }
 
             saveCardsLocally() {
-                localStorage.setItem('loopcart-cards', JSON.stringify(this.cards));
-                //syncAllCardsToSheet(this.cards);
+                // Per-mutation ops are written via _appendOp; this method compacts when needed.
+                this._maybeCompact();
             }
 
             saveCardsAll() {
-                localStorage.setItem('loopcart-cards', JSON.stringify(this.cards));
+                // Write this.cards (the in-memory merged state) directly as the new snapshot.
+                // Do NOT use _compact()/_reconstruct() here — those read from localStorage
+                // and would miss cloud-merged data that lives only in this.cards.
+                const snap = { v: 2, ts: Date.now(), data: this.cards.map(compressCard) };
+                localStorage.setItem('lc-snap', JSON.stringify(snap));
+                localStorage.removeItem('lc-ops');
                 syncAllCardsToSheet(this.cards);
             }
 
@@ -971,9 +1060,23 @@
                     // Compare with original snapshot
                     const hasChanged = JSON.stringify(this.currentCard) !== this.originalCardSnapshot;
                     if (hasChanged) {
-                        // Save or update card
+                        // Log card-level property changes as delta ops
+                        const prev = JSON.parse(this.originalCardSnapshot);
+                        const curr = this.currentCard;
                         const existingIndex = this.cards.findIndex(c => c.id === this.currentCardId);
+                        if (existingIndex < 0) {
+                            // New card being saved for the first time
+                            this._appendOp({ op: 'addCard', card: compressCard(curr) });
+                        } else {
+                            if (prev.card !== curr.card)
+                                this._appendOp({ op: 'renCard', cid: curr.id, c: curr.card });
+                            if (prev.sorting !== curr.sorting)
+                                this._appendOp({ op: 'setSort', cid: curr.id, s: curr.sorting });
+                            if (prev.pinned !== curr.pinned)
+                                this._appendOp({ op: 'setPin', cid: curr.id, p: curr.pinned });
+                        }
 
+                        // Save or update card in memory
                         if (existingIndex >= 0) {
                             this.cards[existingIndex] = this.currentCard;
                         } else {
@@ -996,29 +1099,35 @@
             addItem() {
                 const input = document.getElementById('new-item-input');
                 const word = input.value.trim();
-                
+
                 if (word) {
+                    const now = Date.now();
                     // Check if item already exists
-                    const existingItem = this.currentCard.items.find(item => 
+                    const existingItem = this.currentCard.items.find(item =>
                         item.name.toLowerCase() === word.toLowerCase()
                     );
-                    
+
                     if (existingItem) {
                         existingItem.checked = false;
-                        existingItem.last_added_time = Date.now();
+                        existingItem.last_added_time = now;
                         existingItem.d = false;
                     } else {
                         // Add new item
-                        this.currentCard.items.push({
+                        const newItem = {
                             name: word,
                             checked: false,
                             checked_count: 0,
                             last_checked_time: null,
-                            last_added_time: Date.now(),
+                            last_added_time: now,
+                            pos: now,
                             d: false
-                        });
+                        };
+                        this.currentCard.items.push(newItem);
                     }
-                    
+
+                    this._appendOp({ op: 'addItem', cid: this.currentCardId,
+                        item: compressItem(existingItem || this.currentCard.items[this.currentCard.items.length - 1]) });
+
                     input.value = '';
                     this.renderItems();
                     document.getElementById('new-item-input').focus();
@@ -1028,15 +1137,20 @@
             toggleItem(index) {
                 const item = this.currentCard.items[index];
                 item.checked = !item.checked;
-                
+                const now = Date.now();
+
                 if (item.checked) {
                     item.checked_count++;
-                    item.last_checked_time = Date.now();
+                    item.last_checked_time = now;
                 } else {
                     // Unchecking = re-adding
-                    item.last_added_time = Date.now();
+                    item.last_added_time = now;
                 }
-                
+
+                this._appendOp({ op: 'toggleItem', cid: this.currentCardId,
+                    n: item.name, k: item.checked,
+                    lct: item.last_checked_time, cc: item.checked_count, lat: item.last_added_time });
+
                 this.renderItems();
             }
 
@@ -1044,15 +1158,26 @@
                 // BUG-006 fix: stamp both timestamps so the delete record always wins in
                 // mergeItems — prevents resurrection when last_added_time > delete time
                 const now = Date.now();
-                this.currentCard.items[index].last_checked_time = now;
-                this.currentCard.items[index].last_added_time = now;
-                this.currentCard.items[index].d = true;
+                const item = this.currentCard.items[index];
+                item.last_checked_time = now;
+                item.last_added_time = now;
+                item.d = true;
+
+                this._appendOp({ op: 'delItem', cid: this.currentCardId,
+                    n: item.name, lct: now, lat: now });
+
                 this.renderItems();
             }
 
             editItem(index, newName) {
                 if (newName.trim()) {
-                    this.currentCard.items[index].name = newName.trim();
+                    const originalName = this.currentCard.items[index].name;
+                    const trimmed = newName.trim();
+                    this.currentCard.items[index].name = trimmed;
+                    if (originalName !== trimmed) {
+                        this._appendOp({ op: 'editItem', cid: this.currentCardId,
+                            oldN: originalName, n: trimmed });
+                    }
                     this.renderItems();
                 }
             }
@@ -1088,6 +1213,144 @@
                     return [...items].sort((a, b) => a.last_added_time - b.last_added_time);
                 }
             }
+
+            // ── Enhancement 1: Delta operations log ────────────────────────────
+
+            _appendOp(op) {
+                const ops = this._loadOps();
+                ops.push({ ...op, ts: Date.now() });
+                try {
+                    localStorage.setItem('lc-ops', JSON.stringify(ops));
+                } catch (e) {
+                    // localStorage full — compact and retry
+                    this._compact();
+                    const fresh = this._loadOps();
+                    fresh.push({ ...op, ts: Date.now() });
+                    try { localStorage.setItem('lc-ops', JSON.stringify(fresh)); } catch {}
+                }
+            }
+
+            _loadOps() {
+                try {
+                    return JSON.parse(localStorage.getItem('lc-ops') || '[]');
+                } catch { return []; }
+            }
+
+            _loadSnapshot() {
+                try {
+                    const raw = localStorage.getItem('lc-snap');
+                    if (!raw) return [];
+                    const snap = JSON.parse(raw);
+                    return (snap.data || []).map(safeExpandCard);
+                } catch { return []; }
+            }
+
+            _reconstruct() {
+                let cards = this._loadSnapshot();
+                const ops = this._loadOps();
+                for (const op of ops) {
+                    cards = this._applyOp(cards, op);
+                }
+                return cards;
+            }
+
+            _applyOp(cards, op) {
+                switch (op.op) {
+                    case 'addCard':
+                        if (!cards.find(c => c.id === op.card.id)) {
+                            cards = [...cards, safeExpandCard(op.card)];
+                        }
+                        break;
+                    case 'delCard':
+                        cards = cards.map(c => c.id === op.cid ? { ...c, items: [], d: true } : c);
+                        break;
+                    case 'renCard':
+                        cards = cards.map(c => c.id === op.cid ? { ...c, card: op.c } : c);
+                        break;
+                    case 'setSort':
+                        cards = cards.map(c => c.id === op.cid ? { ...c, sorting: op.s } : c);
+                        break;
+                    case 'setPin':
+                        cards = cards.map(c => c.id === op.cid ? { ...c, pinned: op.p } : c);
+                        break;
+                    case 'addItem': {
+                        cards = cards.map(c => {
+                            if (c.id !== op.cid) return c;
+                            const existing = c.items.findIndex(i =>
+                                i.name.toLowerCase() === op.item.n.toLowerCase());
+                            const newItem = safeExpandItem(op.item);
+                            if (existing >= 0) {
+                                const items = [...c.items];
+                                items[existing] = { ...items[existing], checked: false,
+                                    last_added_time: op.item.lat, d: false };
+                                return { ...c, items };
+                            }
+                            return { ...c, items: [...c.items, newItem] };
+                        });
+                        break;
+                    }
+                    case 'toggleItem':
+                        cards = cards.map(c => {
+                            if (c.id !== op.cid) return c;
+                            const items = c.items.map(i =>
+                                i.name.toLowerCase() === op.n.toLowerCase()
+                                    ? { ...i, checked: op.k, last_checked_time: op.lct,
+                                        last_added_time: op.lat, checked_count: op.cc }
+                                    : i
+                            );
+                            return { ...c, items };
+                        });
+                        break;
+                    case 'delItem':
+                        cards = cards.map(c => {
+                            if (c.id !== op.cid) return c;
+                            const items = c.items.map(i =>
+                                i.name.toLowerCase() === op.n.toLowerCase()
+                                    ? { ...i, d: true, last_checked_time: op.lct, last_added_time: op.lat }
+                                    : i
+                            );
+                            return { ...c, items };
+                        });
+                        break;
+                    case 'editItem':
+                        cards = cards.map(c => {
+                            if (c.id !== op.cid) return c;
+                            const items = c.items.map(i =>
+                                i.name.toLowerCase() === op.oldN.toLowerCase()
+                                    ? { ...i, name: op.n } : i
+                            );
+                            return { ...c, items };
+                        });
+                        break;
+                    case 'moveItem':
+                        cards = cards.map(c => {
+                            if (c.id !== op.cid) return c;
+                            const items = c.items.map(i =>
+                                i.name.toLowerCase() === op.n.toLowerCase()
+                                    ? { ...i, pos: op.pos } : i
+                            );
+                            return { ...c, items };
+                        });
+                        break;
+                }
+                return cards;
+            }
+
+            _compact() {
+                const fullCards = this._reconstruct();
+                const snap = { v: 2, ts: Date.now(), data: fullCards.map(compressCard) };
+                localStorage.setItem('lc-snap', JSON.stringify(snap));
+                localStorage.removeItem('lc-ops');
+            }
+
+            _maybeCompact() {
+                const ops = this._loadOps();
+                if (ops.length >= 50) {
+                    this._compact();
+                }
+            }
+
+            // ── End delta operations log ───────────────────────────────────────
 
             renderItems() {
                 const container = document.getElementById('items-list');
@@ -1234,6 +1497,8 @@
                 const card = this.cards.find(c => c.id === cardId);
                 card.items = [];
                 card.d = true;
+
+                this._appendOp({ op: 'delCard', cid: cardId });
 
                 // BUG-010 fix: re-render immediately so the card disappears at once
                 // instead of waiting for the async cloud sync to complete
@@ -1383,6 +1648,21 @@
         // Initialize app
         const app = new LoopCart();
 
+        // Enhancement 1: flush pending ops to snapshot on page unload so the next
+        // cold load starts from a clean snapshot rather than a long ops log.
+        window.addEventListener('beforeunload', () => {
+            try {
+                if (app.cards && app.cards.length > 0) {
+                    // Use in-memory this.cards as the authoritative state
+                    const snap = { v: 2, ts: Date.now(), data: app.cards.map(compressCard) };
+                    localStorage.setItem('lc-snap', JSON.stringify(snap));
+                    localStorage.removeItem('lc-ops');
+                } else {
+                    app._compact();
+                }
+            } catch {}
+        });
+
         // --- Google API Config ---
         // Set spreadsheet name based on environment
         const SPREADSHEET_NAME = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? 'LoopCart-testing' : 'LoopCart';
@@ -1418,19 +1698,15 @@
             return loopCartSpreadsheetId;
         }
 
-        // Write all cards data as JSON to cell A1
+        // Write all cards data as compact JSON to cell A1
         async function syncAllCardsToSheet(cards) {
-            if (!googleAuthInstance || !googleAuthInstance.isSignedIn.get()) {
-                alert('Please sign in to Google first.');
-                return;
-            }
-            if (!cards || !Array.isArray(cards) || cards.length === 0) {
-                alert('No cards to sync.');
-                return;
-            }
+            if (!googleAuthInstance || !googleAuthInstance.isSignedIn.get()) return;
+            if (!cards || !Array.isArray(cards)) return;
+            // Proceed even with empty array — write [] to clear the sheet
             try {
                 const spreadsheetId = await getOrCreateLoopCartSpreadsheet();
-                const jsonData = JSON.stringify(cards, null, 2);
+                // Compact short-key format: ~60% smaller than pretty-printed full-key JSON
+                const jsonData = JSON.stringify(cards.map(compressCard));
                 await gapi.client.sheets.spreadsheets.values.update({
                     spreadsheetId,
                     range: 'Sheet1!A1',
@@ -1631,8 +1907,10 @@
             };
             testCard.items.push(newItem);
 
-            // Finally, write the contents in local JSON.
-            localStorage.setItem('loopcart-cards', JSON.stringify(localCards));
+            // Write as new snapshot and clear ops log
+            const snap = { v: 2, ts: Date.now(), data: localCards.map(compressCard) };
+            localStorage.setItem('lc-snap', JSON.stringify(snap));
+            localStorage.removeItem('lc-ops');
             app.renderHome();
         }
 
