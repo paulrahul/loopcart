@@ -391,12 +391,14 @@
 
         function compressCard(card) {
             return {
-                id: card.id,
-                c:  card.card,
-                i:  card.items.map(compressItem),
-                s:  card.sorting,
-                p:  card.pinned,
-                d:  card.d,
+                id:  card.id,
+                c:   card.card,
+                i:   card.items.map(compressItem),
+                s:   card.sorting,
+                p:   card.pinned,
+                d:   card.d,
+                dat: card.deleted_at || null,   // SYNC-001: tombstone timestamp for pruning
+                clm: card.card_lm   || null,    // SYNC-002: card last-modified for metadata merge
             };
         }
 
@@ -415,12 +417,14 @@
 
         function expandCard(c) {
             return {
-                id:      c.id,
-                card:    c.c,
-                items:   (c.i || []).map(expandItem),
-                sorting: c.s !== undefined ? c.s : 0,
-                pinned:  c.p === true,
-                d:       c.d === true,
+                id:         c.id,
+                card:       c.c,
+                items:      (c.i || []).map(expandItem),
+                sorting:    c.s !== undefined ? c.s : 0,
+                pinned:     c.p === true,
+                d:          c.d === true,
+                deleted_at: c.dat || null,   // SYNC-001
+                card_lm:    c.clm || null,   // SYNC-002
             };
         }
 
@@ -633,14 +637,30 @@
                     // still matched and don't produce duplicates or ghost cards
                     const exists = cloudCards.some(c => c.id === localCard.id);
                     if (!exists) {
+                        // Local-only card (new or deleted-before-first-sync).
+                        // Push as-is (tombstone or live); cloud needs updating either way.
                         resultCards.push(localCard);
                         hasChanged = true;
                     } else {
                         const cloudCard = cloudCards.find(c => c.id === localCard.id);
 
                         if (localCard.d || cloudCard.d) {
-                            hasChanged = true;
-                            // card has been deleted. no need to show it anymore.
+                            // SYNC-001: preserve tombstone instead of dropping entirely.
+                            // Without this, Sheets loses the deletion record and other devices
+                            // treat the card as a new local-only card, resurrecting it.
+                            const tombstone = {
+                                id:         localCard.id,
+                                card:       localCard.card || cloudCard.card || '',
+                                items:      [],
+                                sorting:    localCard.sorting !== undefined ? localCard.sorting : (cloudCard.sorting || 0),
+                                pinned:     false,
+                                d:          true,
+                                deleted_at: localCard.deleted_at || cloudCard.deleted_at || Date.now(),
+                                card_lm:    Math.max(localCard.card_lm || 0, cloudCard.card_lm || 0) || null,
+                            };
+                            resultCards.push(tombstone);
+                            // Only dirty if deletion is new to one side
+                            if (!localCard.d || !cloudCard.d) hasChanged = true;
                             continue;
                         }
 
@@ -648,13 +668,22 @@
                         const hasCardChanged = JSON.stringify(cloudCard) !== JSON.stringify(localCard);
                         if (hasCardChanged) {
                             hasChanged = true;
-                            // Add the more latest one.
+                            // SYNC-002: use card_lm to pick the winner for metadata fields
+                            // so renames/sort/pin changes survive cross-device sync.
+                            const localLm = localCard.card_lm || 0;
+                            const cloudLm = cloudCard.card_lm || 0;
+                            // Cloud wins ties (it represents the last successful saveCardsAll
+                            // from some device — a safe default for legacy cards without card_lm).
+                            const useCloud = cloudLm >= localLm;
                             let newCard = {
-                                id: localCard.id,
-                                card: localCard.card,
-                                items: this.mergeItems(cloudCard.items, localCard.items),
-                                sorting: cloudCard.sorting !== undefined ? cloudCard.sorting : (localCard.sorting !== undefined ? localCard.sorting : 0),
-                                pinned: cloudCard.pinned === true
+                                id:         localCard.id,
+                                card:       useCloud ? cloudCard.card    : localCard.card,
+                                items:      this.mergeItems(cloudCard.items, localCard.items),
+                                sorting:    useCloud
+                                    ? (cloudCard.sorting !== undefined ? cloudCard.sorting : 0)
+                                    : (localCard.sorting !== undefined ? localCard.sorting : 0),
+                                pinned:     useCloud ? cloudCard.pinned === true : localCard.pinned === true,
+                                card_lm:    Math.max(localLm, cloudLm) || null,
                             };
                             resultCards.push(newCard);
                         } else {
@@ -668,6 +697,9 @@
                     // BUG-004 fix: set hasChanged=true so new cloud cards are persisted to localStorage
                     const exists = localCards.some(c => c.id === cloudCard.id);
                     if (!exists) {
+                        // SYNC-001: skip cloud tombstones for cards local never had —
+                        // there is no stale local copy to protect against resurrection.
+                        if (cloudCard.d) continue;
                         resultCards.push(cloudCard);
                         hasChanged = true;
                     }
@@ -753,7 +785,16 @@
                 // Write this.cards (the in-memory merged state) directly as the new snapshot.
                 // Do NOT use _compact()/_reconstruct() here — those read from localStorage
                 // and would miss cloud-merged data that lives only in this.cards.
-                const snap = { v: 2, ts: Date.now(), data: this.cards.map(compressCard) };
+
+                // SYNC-001: prune tombstones older than 30 days — by then every device
+                // has had ample time to sync and learn of the deletion.
+                const TOMBSTONE_TTL = 30 * 24 * 60 * 60 * 1000;
+                const now = Date.now();
+                this.cards = this.cards.filter(c =>
+                    !c.d || !c.deleted_at || (now - c.deleted_at < TOMBSTONE_TTL)
+                );
+
+                const snap = { v: 2, ts: now, data: this.cards.map(compressCard) };
                 localStorage.setItem('lc-snap', JSON.stringify(snap));
                 localStorage.removeItem('lc-ops');
                 syncAllCardsToSheet(this.cards);
@@ -894,9 +935,10 @@
                     id: Date.now().toString(),
                     card: '',
                     items: [],
-                    sorting: 0, // Default sorting
-                    pinned: false, // New pinned attribute
-                    d: false
+                    sorting: 0,
+                    pinned: false,
+                    d: false,
+                    card_lm: Date.now(),    // SYNC-002: seed timestamp for metadata merge
                 };
                 
                 this.currentCard = newCard;
@@ -1262,16 +1304,21 @@
                         }
                         break;
                     case 'delCard':
-                        cards = cards.map(c => c.id === op.cid ? { ...c, items: [], d: true } : c);
+                        // SYNC-001: stamp deleted_at from op timestamp so tombstone can be pruned
+                        cards = cards.map(c => c.id === op.cid
+                            ? { ...c, items: [], d: true, deleted_at: op.ts }
+                            : c
+                        );
                         break;
                     case 'renCard':
-                        cards = cards.map(c => c.id === op.cid ? { ...c, card: op.c } : c);
+                        // SYNC-002: track card_lm so mergeCards can pick the most recent title
+                        cards = cards.map(c => c.id === op.cid ? { ...c, card: op.c, card_lm: op.ts } : c);
                         break;
                     case 'setSort':
-                        cards = cards.map(c => c.id === op.cid ? { ...c, sorting: op.s } : c);
+                        cards = cards.map(c => c.id === op.cid ? { ...c, sorting: op.s, card_lm: op.ts } : c);
                         break;
                     case 'setPin':
-                        cards = cards.map(c => c.id === op.cid ? { ...c, pinned: op.p } : c);
+                        cards = cards.map(c => c.id === op.cid ? { ...c, pinned: op.p, card_lm: op.ts } : c);
                         break;
                     case 'addItem': {
                         cards = cards.map(c => {
@@ -1497,6 +1544,7 @@
                 const card = this.cards.find(c => c.id === cardId);
                 card.items = [];
                 card.d = true;
+                card.deleted_at = Date.now();   // SYNC-001: tombstone timestamp for pruning
 
                 this._appendOp({ op: 'delCard', cid: cardId });
 
@@ -1991,8 +2039,10 @@
                 });
             }
 
-            // --- Auto-refresh from cloud if tab is inactive for 30+ minutes ---
-            const CLOUD_REFRESH_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+            // --- Auto-refresh from cloud if tab has been inactive ---
+            // SYNC-003: 30 seconds instead of 30 minutes so cross-device changes are
+            // visible quickly when the user switches back to a tab.
+            const CLOUD_REFRESH_THRESHOLD_MS = 30 * 1000; // 30 seconds
             function maybeRefreshFromCloud() {
                 const lastSync = parseInt(localStorage.getItem('loopcart-last-sync') || '0', 10);
                 const now = Date.now();
