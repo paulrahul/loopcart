@@ -219,6 +219,9 @@
             border-color: #4b5563;
             box-shadow: 0 1px 0 #4b5563;
         }
+
+        /* Auto-save text indicator */
+        #autosave-indicator { transition: opacity 0.8s ease; }
     </style>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
@@ -319,6 +322,9 @@
                                     <span class="material-symbols-outlined">search</span>
                                 </button>
                                 <input type="text" id="items-search-input" class="search-input" placeholder="Search items..." autocomplete="off">
+                                <!-- Auto-save text indicator: absolutely positioned so it takes no space -->
+                                <div id="autosave-indicator" class="hidden text-xs text-gray-400 dark:text-gray-500"
+                                     style="position:absolute;right:0;top:50%;transform:translateY(-50%);pointer-events:none;"></div>
                             </div>
 
                             <!-- Add Item Input -->
@@ -465,6 +471,10 @@
                 this.currentCard = null;
                 this.currentCardId = null;
                 this._syncPending = false;  // BUG-007: deferred sync flag
+                this._lastAutoSaveTs = null;
+                this._pendingCloudSyncTs = null;
+                this._hasSavedOnce = false;
+                this._indicatorFadeTimer = null;
                 this.isDark = localStorage.getItem('theme') === 'dark';
 
                 this.autocompleteItems = [
@@ -597,6 +607,9 @@
                 }
                 this.bindEvents();
                 this.renderHome();
+                // Auto-persist timers
+                this._autosaveTimer = setInterval(() => this._autosave(), 30_000);
+                this._indicatorTimer = setInterval(() => this._updateSaveIndicator(), 10_000);
                 // Cloud sync happens later via initGoogleAPI → syncFromCloud
             }
 
@@ -1114,6 +1127,9 @@
                 } else {
                     document.getElementById('new-item-input').focus();
                 }
+
+                // Refresh save indicator (hidden until first autosave fires for this card)
+                this._updateSaveIndicator();
             }
 
             closeCard() {
@@ -1149,12 +1165,78 @@
 
                     document.getElementById('card-editor').classList.add('hidden');
                     document.getElementById('home-screen').classList.remove('hidden');
+                    document.getElementById('autosave-indicator').classList.add('hidden');
+                    this._lastAutoSaveTs = null;
+                    this._hasSavedOnce = false;
+                    clearTimeout(this._indicatorFadeTimer);
 
                     // BUG-008 fix: always re-render home so it's never stale after closing
                     this.renderHome();
                     // Clear snapshot
                     this.originalCardSnapshot = null;
                 }
+            }
+
+            _autosave({ forceCloud = false } = {}) {
+                if (!this.currentCard) return;
+
+                // Merge in-progress edits into this.cards
+                const existingIndex = this.cards.findIndex(c => c.id === this.currentCardId);
+                const cardSnapshot = { ...this.currentCard, items: this.currentCard.items.map(i => ({ ...i })) };
+                if (existingIndex >= 0) {
+                    this.cards[existingIndex] = cardSnapshot;
+                } else {
+                    this.cards.push(cardSnapshot);
+                }
+
+                // Write in-memory this.cards directly as the new snapshot (same as saveCardsAll but
+                // without tombstone pruning or cloud sync here — in-memory edits must be included).
+                const snap = { v: 2, ts: Date.now(), data: this.cards.map(compressCard) };
+                localStorage.setItem('lc-snap', JSON.stringify(snap));
+                localStorage.removeItem('lc-ops');
+                this._lastAutoSaveTs = Date.now();
+                const label = this._hasSavedOnce ? 'Auto-saved' : 'Saved';
+                this._hasSavedOnce = true;
+                this._showSaveText(label);
+
+                // Cloud sync: throttled to at most once every 5 minutes
+                const now = Date.now();
+                const fiveMin = 5 * 60 * 1000;
+                if (forceCloud || !this._pendingCloudSyncTs || (now - this._pendingCloudSyncTs) > fiveMin) {
+                    if (googleAuthInstance && googleAuthInstance.isSignedIn.get()) {
+                        syncAllCardsToSheet(this.cards);
+                        this._pendingCloudSyncTs = now;
+                    }
+                }
+            }
+
+            _updateSaveIndicator() {
+                const el = document.getElementById('autosave-indicator');
+                if (!el) return;
+                if (!this._lastAutoSaveTs) el.classList.add('hidden');
+            }
+
+            _showSaveText(text) {
+                const el = document.getElementById('autosave-indicator');
+                if (!el) return;
+                // Cancel any in-progress fade
+                clearTimeout(this._indicatorFadeTimer);
+                el.textContent = text;
+                el.style.opacity = '1';
+                el.classList.remove('hidden');
+                // Start fade after 1.5s, then hide after the 0.8s transition
+                this._indicatorFadeTimer = setTimeout(() => {
+                    el.style.opacity = '0';
+                    setTimeout(() => {
+                        if (el.style.opacity === '0') el.classList.add('hidden');
+                    }, 850);
+                }, 1500);
+            }
+
+            destroy() {
+                clearInterval(this._autosaveTimer);
+                clearInterval(this._indicatorTimer);
+                clearTimeout(this._indicatorFadeTimer);
             }
 
             addItem() {
@@ -1858,8 +1940,11 @@
 
         // Enhancement 1: flush pending ops to snapshot on page unload so the next
         // cold load starts from a clean snapshot rather than a long ops log.
+        // Enhancement 4: also autosave any in-progress card edits before unload.
         window.addEventListener('beforeunload', () => {
             try {
+                // Persist any open card edits into this.cards before writing snapshot
+                app._autosave({ forceCloud: false });
                 if (app.cards && app.cards.length > 0) {
                     // Use in-memory this.cards as the authoritative state
                     const snap = { v: 2, ts: Date.now(), data: app.cards.map(compressCard) };
