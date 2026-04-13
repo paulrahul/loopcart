@@ -42,6 +42,25 @@
         .item-move {
             transition: all 0.3s ease;
         }
+
+        .drag-handle {
+            touch-action: none;
+            cursor: grab;
+            user-select: none;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+        .item-dragging {
+            opacity: 0.4;
+        }
+        .drop-indicator {
+            height: 2px;
+            background: #3b82f6;
+            border-radius: 1px;
+            margin: -1px 4px;
+            pointer-events: none;
+        }
         
         .autocomplete-container {
             position: relative;
@@ -1224,6 +1243,53 @@
                 }
             }
 
+            moveItem(originalIndex, targetSortedIndex) {
+                // Only works in Default mode
+                if (this.currentCard.sorting !== 0) return;
+
+                const GAP = 65536;
+                const sorted = this.getSortedItems(this.currentCard);
+                const movedItem = this.currentCard.items[originalIndex];
+                const fromIdx = sorted.indexOf(movedItem);
+
+                // No-op if dropped in the same position
+                if (targetSortedIndex === fromIdx || targetSortedIndex === fromIdx + 1) return;
+
+                // Build list without the dragged item to find neighbours at the target gap
+                const rest = sorted.filter((_, i) => i !== fromIdx);
+
+                // Adjust target index into rest[] (gap before item at targetSortedIndex in rest)
+                // If the item was before the target, shifting removes it shifts rest indices down by 1
+                const gapInRest = targetSortedIndex > fromIdx
+                    ? targetSortedIndex - 1   // item removed from before, so offset shifts
+                    : targetSortedIndex;
+
+                const getPos = item => item.pos !== undefined ? item.pos : item.last_added_time;
+
+                const prevPos = gapInRest > 0
+                    ? getPos(rest[gapInRest - 1])
+                    : getPos(rest[0]) - GAP;
+                const nextPos = gapInRest < rest.length
+                    ? getPos(rest[gapInRest])
+                    : getPos(rest[rest.length - 1]) + GAP;
+
+                let newPos = (prevPos + nextPos) / 2;
+
+                // Rebalance if gap too narrow (prevents floating-point exhaustion)
+                if (Math.abs(newPos - prevPos) < 1) {
+                    sorted.forEach((item, i) => { item.pos = (i + 1) * GAP; });
+                    return this.moveItem(originalIndex, targetSortedIndex);
+                }
+
+                const now = Date.now();
+                this.currentCard.items[originalIndex].pos             = newPos;
+                this.currentCard.items[originalIndex].last_added_time = now;
+
+                this._appendOp({ op: 'moveItem', cid: this.currentCardId, n: movedItem.name, pos: newPos, lat: now });
+
+                this.renderItems();
+            }
+
             getSortedItems(card) {
                 let items = card.items;
                 // Filter by search term if present
@@ -1251,8 +1317,12 @@
                     // Only unchecked, earliest added first
                     return items.filter(item => !item.checked).sort((a, b) => a.last_added_time - b.last_added_time);
                 } else { // Default
-                    // All items as added (by last_added_time ascending)
-                    return [...items].sort((a, b) => a.last_added_time - b.last_added_time);
+                    // Sort by pos, fall back to last_added_time for items without pos
+                    return [...items].sort((a, b) => {
+                        const posA = a.pos !== undefined ? a.pos : a.last_added_time;
+                        const posB = b.pos !== undefined ? b.pos : b.last_added_time;
+                        return posA - posB;
+                    });
                 }
             }
 
@@ -1374,7 +1444,7 @@
                             if (c.id !== op.cid) return c;
                             const items = c.items.map(i =>
                                 i.name.toLowerCase() === op.n.toLowerCase()
-                                    ? { ...i, pos: op.pos } : i
+                                    ? { ...i, pos: op.pos, ...(op.lat ? { last_added_time: op.lat } : {}) } : i
                             );
                             return { ...c, items };
                         });
@@ -1402,10 +1472,11 @@
             renderItems() {
                 const container = document.getElementById('items-list');
                 const sortedItems = this.getSortedItems(this.currentCard);
-                
+                const isDefaultSort = this.currentCard.sorting === 0;
+
                 container.innerHTML = '';
-                
-                sortedItems.forEach((item, index) => {
+
+                sortedItems.forEach((item, sortedIndex) => {
                     if (item.d) {
                         // item is deleted.
                         return;
@@ -1413,28 +1484,117 @@
 
                     const originalIndex = this.currentCard.items.indexOf(item);
                     const itemDiv = document.createElement('div');
-                    itemDiv.className = `flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg item-move ${item.checked ? 'opacity-60' : ''}`;
-                    
+                    itemDiv.className = `flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg item-move ${item.checked ? 'opacity-60' : ''}`;
+                    itemDiv.dataset.dragOrig = originalIndex;
+
                     itemDiv.innerHTML = `
-                        <input type="checkbox" ${item.checked ? 'checked' : ''} 
-                               class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                        ${isDefaultSort ? `
+                        <span class="drag-handle text-gray-300 dark:text-gray-500 hover:text-gray-500 dark:hover:text-gray-300 flex-none text-xl leading-none"
+                              data-drag-index="${originalIndex}"
+                              title="Drag to reorder">⠿</span>
+                        ` : ''}
+                        <input type="checkbox" ${item.checked ? 'checked' : ''}
+                               class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 flex-none"
                                onchange="app.toggleItem(${originalIndex})">
-                        <input type="text" value="${item.name}" 
+                        <input type="text" value="${item.name}"
                                class="flex-1 bg-transparent border-none outline-none text-gray-800 dark:text-white ${item.checked ? 'line-through' : ''}"
                                oninput="app.handleAutocomplete(this.value)"
                                onblur="app.editItem(${originalIndex}, this.value)"
                                onkeypress="if(event.key==='Enter') this.blur()">
-                        <button onclick="app.deleteItem(${originalIndex})" 
-                                class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors">
+                        <button onclick="app.deleteItem(${originalIndex})"
+                                class="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors flex-none">
                             <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                             </svg>
                         </button>
                     `;
-                    
+
                     container.appendChild(itemDiv);
                 });
+
+                if (isDefaultSort) this._initDrag();
             }
+
+            // ── Drag-to-reorder ───────────────────────────────────────────────
+
+            _initDrag() {
+                this._drag = null;
+                const list = document.getElementById('items-list');
+                list.querySelectorAll('.drag-handle').forEach(handle => {
+                    handle.addEventListener('pointerdown', e => this._onDragStart(e));
+                });
+            }
+
+            _onDragStart(e) {
+                e.preventDefault();
+                const handle  = e.currentTarget;
+                const itemEl  = handle.closest('[data-drag-orig]');
+                const origIdx = parseInt(handle.dataset.dragIndex, 10);
+
+                handle.setPointerCapture(e.pointerId);
+
+                const indicator = document.createElement('div');
+                indicator.className = 'drop-indicator';
+
+                this._drag = {
+                    handle, itemEl, originalIndex: origIdx,
+                    currentDropIndex: null, indicator
+                };
+                itemEl.classList.add('item-dragging');
+
+                handle.addEventListener('pointermove',   e => this._onDragMove(e));
+                handle.addEventListener('pointerup',     e => this._onDragEnd(e));
+                handle.addEventListener('pointercancel', e => this._onDragEnd(e));
+            }
+
+            _onDragMove(e) {
+                if (!this._drag) return;
+                const list    = document.getElementById('items-list');
+                const rows    = [...list.querySelectorAll('[data-drag-orig]')];
+                const dragged = this._drag.itemEl;
+                const { indicator } = this._drag;
+
+                // Find which gap the pointer is closest to
+                let dropIndex = rows.length; // default: after last row
+                for (let i = 0; i < rows.length; i++) {
+                    if (rows[i] === dragged) continue;
+                    const rect = rows[i].getBoundingClientRect();
+                    if (e.clientY < rect.top + rect.height / 2) {
+                        dropIndex = i;
+                        break;
+                    }
+                }
+                this._drag.currentDropIndex = dropIndex;
+
+                // Place the indicator
+                if (dropIndex < rows.length) {
+                    rows[dropIndex].before(indicator);
+                } else {
+                    list.appendChild(indicator);
+                }
+
+                // Auto-scroll near viewport edges
+                const ZONE = 60;
+                if (e.clientY < ZONE) window.scrollBy(0, -10);
+                else if (e.clientY > window.innerHeight - ZONE) window.scrollBy(0, 10);
+            }
+
+            _onDragEnd(e) {
+                if (!this._drag) return;
+                const { itemEl, originalIndex, currentDropIndex, indicator } = this._drag;
+
+                itemEl.classList.remove('item-dragging');
+                indicator.remove();
+                this._drag = null;
+
+                if (currentDropIndex !== null) {
+                    this.moveItem(originalIndex, currentDropIndex);
+                } else {
+                    this.renderItems();
+                }
+            }
+
+            // ── End drag-to-reorder ───────────────────────────────────────────
 
             renderHome() {
                 const container = document.getElementById('cards-container');
