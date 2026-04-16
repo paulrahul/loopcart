@@ -473,6 +473,7 @@
                 this._syncPending = false;  // BUG-007: deferred sync flag
                 this._lastAutoSaveTs = null;
                 this._pendingCloudSyncTs = null;
+                this._cloudDirty = false;   // true whenever mutations exist that haven't been pushed to cloud
                 this._hasSavedOnce = false;
                 this._indicatorFadeTimer = null;
                 this.isDark = localStorage.getItem('theme') === 'dark';
@@ -1411,6 +1412,7 @@
             // ── Enhancement 1: Delta operations log ────────────────────────────
 
             _appendOp(op) {
+                this._cloudDirty = true;  // mark unsaved cloud changes
                 const ops = this._loadOps();
                 ops.push({ ...op, ts: Date.now() });
                 try {
@@ -1943,8 +1945,9 @@
         // Enhancement 4: also autosave any in-progress card edits before unload.
         window.addEventListener('beforeunload', () => {
             try {
-                // Persist any open card edits into this.cards before writing snapshot
-                app._autosave({ forceCloud: false });
+                // Persist any open card edits into this.cards before writing snapshot.
+                // Force cloud push if there are unsaved mutations — best-effort on unload.
+                app._autosave({ forceCloud: app._cloudDirty });
                 if (app.cards && app.cards.length > 0) {
                     // Use in-memory this.cards as the authoritative state
                     const snap = { v: 2, ts: Date.now(), data: app.cards.map(compressCard) };
@@ -2006,6 +2009,7 @@
                     valueInputOption: 'RAW',
                     resource: { values: [[jsonData]] }
                 });
+                if (typeof app !== 'undefined') app._cloudDirty = false;
                 showSyncStatus('Saved to Google Drive!', true);
             } catch (err) {
                 console.error('Stack trace:', err.stack); // Logs the full stack trace
@@ -2302,7 +2306,13 @@
                 }
             }
             document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
+                if (document.visibilityState === 'hidden') {
+                    // Tab backgrounded or closed — flush dirty mutations to cloud immediately.
+                    // Pushing TO cloud is safe even while a card is open (BUG-007 only guards pulls).
+                    if (app._cloudDirty) {
+                        app._autosave({ forceCloud: true });
+                    }
+                } else if (document.visibilityState === 'visible') {
                     maybeRefreshFromCloud();
                 }
             });
